@@ -1,0 +1,22 @@
+# Local credentials and organization-specific inputs
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+/local/
+
+# Assessment evidence and generated reports
+/evidence/
+/reports/
+/runs/
+
+# Local tooling and caches
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+node_modules/
