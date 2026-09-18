@@ -1,38 +1,52 @@
-# MCP Assessment Capability — Skill and API Application Design
+# Security Assessment Agent — MCP and Skill Scanners on AgentCore
 
-Status: design proposal; assessment engine, Claude Code skill, API application, EKS deployment, rules, and integrations are not implemented.
+Status: design proposal; assessment skills, agent, engine, AgentCore deployment, rules, and integrations are not implemented.
 
-This document records the initial design for an internal Model Context Protocol (MCP) assessment capability. Its purpose is to gather evidence, identify security findings, map them to the corporate control catalogue, and explain assessment limitations. A scan alone does not establish that an MCP is safe for every use.
+This document records the design for an internal security assessment capability covering Model Context Protocol (MCP) servers and agent skill packages. Its purpose is to gather evidence, identify security findings, map them to the corporate control catalogue, and explain assessment limitations. A scan alone does not establish that a target is safe for every use.
 
 ## Objective
 
-Build one reusable MCP security assessment engine delivered through both a skill runnable from the Claude Code terminal and an authenticated API-enabled application deployed on Amazon EKS. Both interfaces share assessment contracts, deterministic checks, corporate-control mappings, reports, and fast/deep mode definitions. Assess internal and external MCPs using available source/configuration and permitted endpoint evidence, with additional AWS Bedrock remediation analysis in deep mode.
+Build one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode. Provide Claude Code terminal access through a separate client skill.
+
+This decision replaces the earlier EKS application and worker deployment proposal. AgentCore Runtime hosts the production agent and assessment execution. A local engine CLI remains useful for development and fixtures; it is not an alternative production hosting requirement.
 
 ## 1. Confirmed scope
 
 - Both internal and external MCPs may provide repository source code, configuration, deployment artifacts, endpoint evidence, or a combination. Source availability is independent of ownership.
+- Skill targets are source packages, whether standalone or contained in a plugin/repository. Inspect relevant package instructions, scripts, dependencies, and containing-plugin configuration as evidence without activating the target.
 - Assessments use supplied files plus explicitly allowed discovery connections.
-- Deliver a Claude Code terminal skill and an API-enabled application backed by the same engine. The skill supports local CLI execution or submission to the configured EKS service; API callers do not require a Claude Code session.
-- Both modes use host-model inference when invoked as an LLM-hosted skill. Inference controlled by the deployed workflow, including host orchestration, must use approved AWS Bedrock configurations.
+- Deliver one security agent on AgentCore Runtime with an authenticated invocation API and one trusted plugin containing two scanner skills. Each scanner has its own target adapter and rule pack; evidence, policy, and report contracts are shared.
+- Retain a Claude Code terminal client skill for submission and report retrieval. API callers do not require Claude Code. An internal plugin is a proposed distribution option.
+- Agent orchestration uses approved Bedrock inference in both modes; Claude Code adds client-host inference when used. All workflow-controlled inference must use approved Bedrock configurations.
 - Fast mode runs deterministic assessment scripts and produces findings, coverage, and maintained remediation guidance. The assessment engine makes no model calls for detection or remediation.
 - Deep mode runs the same scripts first, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
-- The assessment does not depend on external assessment products or public inference APIs. Explicitly approved repository retrieval, MCP endpoints, and AWS Bedrock are network dependencies when their respective capabilities are enabled.
+- The assessment does not depend on external scanning services or public inference APIs. Approved AWS infrastructure, explicitly approved repository retrieval, target discovery, and approved Bedrock inference are permitted network dependencies when enabled. AgentCore hosting does not authorise other model providers.
 - The corporate catalogue is the policy authority. External guidance supplements threat coverage and finding labels.
 
-The deterministic engine should also run directly in a CLI or CI job without a host LLM. This is an optional execution path, not a claim that the full skill workflow is inference-free. Any assistant handling corporate controls or evidence must use an approved environment.
+The engine's developer CLI can run fixtures without an LLM. Production fast assessments still involve the hosted agent; status, report retrieval, and cancellation use structured application logic and need no model call. Any assistant handling corporate controls or evidence must use an approved environment.
 
 ## 2. Architecture and mode boundaries
 
-Use thin skill and API adapters around one reusable assessment engine:
+Host the assessment agent and its two trusted scanner skills in AgentCore Runtime:
 
 ```text
-Claude Code skill → local CLI → shared assessment engine
-Claude Code skill or API client → authenticated API → EKS Jobs
-                                                         ↓
-                                               Same assessment engine
+Claude Code client skill / application / CI
+                    ↓
+      Authenticated InvokeAgentRuntime API
+                    ↓
+  Hosted security agent + trusted security plugin
+      ├── mcp-assessment skill
+      └── skill-assessment skill
+                    ↓
+  Validated workflow + registered engine tools
+                    ↓
+       Shared deterministic assessment engine
+
+S3: evidence and reports
+DynamoDB: assessment ownership, progress, attempts, artifact references
 ```
 
-The engine uses the same pipeline through either interface:
+The agent follows this enforced pipeline regardless of client:
 
 ```text
 Scope and policy → evidence collection → normalized evidence
@@ -41,29 +55,77 @@ Scope and policy → evidence collection → normalized evidence
         └── minimized evidence → Bedrock → validated remediation → deep report
 ```
 
+| Component | Responsibility |
+| --- | --- |
+| Two assessment skills | Target-specific workflow instructions, evidence requirements, interpretation guidance, and references |
+| Hosted agent | Interpret requests within authorised scope, invoke registered assessment tools, and explain results using approved Bedrock inference |
+| Deterministic engine | Establish findings, mappings, coverage, and policy results; enforce required phases and mode restrictions in code |
+| Remediation stage | Generate validated advisory suggestions from existing findings without execution tools |
+| Runtime entry point | Validate typed operations and caller/target access; manage durable assessment state |
+| Claude Code client skill | Prepare requests, invoke the hosted API, retrieve reports, and present results |
+
+Skill instructions guide the agent but do not enforce access control or guarantee execution order. Required checks and publication gates are enforced by code, even if the agent skips a tool or receives malicious target instructions.
+
 Keep these configuration dimensions separate:
 
 | Dimension | Proposed values or content |
 | --- | --- |
 | Analysis mode | `fast`, `deep` |
-| Invocation interface | Claude Code terminal skill, standalone CLI, application API |
-| Execution backend | `local`, `eks`; independent of analysis mode |
+| Target type | `mcp`, `skill`; a mixed batch declares the type on each target |
+| Invocation interface | AgentCore API directly or through the Claude Code client skill/helper |
+| Production execution | AgentCore Runtime; both analysis modes supported |
 | Ownership/origin | Internal, external; identify the owner or maintainer |
 | Evidence available | Repository source, configuration, deployment artifacts, endpoint observations; any combination for either origin |
 | Permitted access | Supplied files; explicitly approved repository retrieval and discovery; future separately authorised testing |
 | Deployment context | Company-hosted or provider-hosted, transport, protocol version, data sensitivity |
 
-### Delivery interfaces and EKS deployment
+### AgentCore Runtime API and client interfaces
 
-The Claude Code skill collects scope and mode, invokes the packaged CLI or configured service, and presents the resulting findings. Package the skill with `SKILL.md` and install it in a supported Claude Code skill location, such as `.claude/skills/mcp-assessment/SKILL.md` for a project. Keep assessment logic in the engine so the skill does not maintain a second set of checks. See the official [Claude Code skill documentation](https://code.claude.com/docs/en/skills).
+Use the managed [InvokeAgentRuntime API](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_InvokeAgentRuntime.html). The application interprets a validated operation envelope; these are proposed application operations, not additional native AgentCore REST routes:
 
-The API application accepts validated manifests, authorises the caller's requested targets, creates asynchronous assessments, exposes status, and authorises report retrieval. Proposed routes are `POST /v1/assessments`, `GET /v1/assessments/{id}`, and `GET /v1/assessments/{id}/report`. The API does not execute arbitrary shell commands or accept caller-supplied Kubernetes manifests. API caller identity is separate from repository and MCP target credentials.
+| Operation | Contract |
+| --- | --- |
+| `start_assessment` | Authorise the manifest, bind an idempotency key to the caller and input digest, persist the assessment, then start bounded work and return its ID |
+| `get_assessment_status` | Authorise access and return durable phase, per-target progress, and errors |
+| `get_assessment_report` | Authorise access and return the report or scoped artifact references |
+| `cancel_assessment` | Persist a cooperative cancellation request; assessment tasks check it at bounded intervals |
+| `resume_assessment` | Authorise a new attempt for interrupted work, preserving the approved manifest, evidence, and version constraints |
 
-For remote execution, source inputs must identify an uploaded snapshot or explicitly approved repository revision; the service cannot assume access to the caller's local paths. Preserve input hashes, rules, mappings, and catalogue versions across interfaces. Both modes are available through both delivery interfaces. A direct fast API/CLI request requires no host-model inference; an LLM-hosted skill still uses host inference. Configure Claude Code host inference through approved Bedrock settings as well as the deep remediation stage. See [Claude Code on Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock).
+Include a schema version, operation, and validated operation-specific arguments. A start request contains mode, typed target/evidence references, permitted discovery, and an idempotency key. Route each target to the corresponding trusted scanner skill using validated `target_type`; the model cannot switch to an arbitrary skill or enlarge the target set. Do not accept arbitrary shell commands, cloud roles, model profiles, or executable prompts as operation definitions. Return an explicit assessment state in the JSON payload; an accepted assessment is not a completed assessment. Native HTTP success can be 200 with an `accepted` application state. A separate REST facade could later expose `/v1/assessments`, but is not required for API delivery.
 
-The proposed implementation uses Python with Pydantic contracts, a CLI adapter, and a FastAPI application. Run assessment work in bounded Kubernetes Jobs on EKS. Separate repository collection, endpoint discovery, deterministic analysis, and Bedrock remediation into execution roles with their own network and credential scope. S3 stores evidence and reports; SQS and a DynamoDB scan registry support the shared service's asynchronous submissions, idempotency, and status. Pin dependencies and worker images, and package deployment configuration with Helm and the organisation's infrastructure tooling. This is an implementation recommendation, not deployed functionality.
+Implement the Runtime HTTP contract through the AgentCore SDK: `/invocations` for requests and `/ping` for health. Choose IAM/SigV4 or configured JWT inbound authentication; the selected Runtime configuration uses one authentication mode. AWS SDK invocation fits IAM; JWT callers use authenticated HTTPS. Integrate the organisation's identity system and authorise every assessment, target, and report operation. Derive ownership from verified identity or a trusted identity propagation layer, never request-body owner fields or a session ID. Verify identity propagation as part of deployment; transport authentication alone does not provide per-report ownership. See [HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html) and [inbound authentication](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html).
 
-The shared engine does not depend on Claude Code, and the application API need not be an MCP server. A browser UI or additional MCP service adapter remains an optional future interface; neither is required by the current API-enabled application objective.
+The Claude Code client skill collects scope and mode, invokes a packaged API helper, and presents the report. Keep credentials outside skill files. Source inputs identify an uploaded immutable snapshot or an explicitly approved repository revision; the hosted agent cannot read a caller's local path. Both modes use the same hosted agent. Configure Claude Code's own inference through approved [Bedrock settings](https://code.claude.com/docs/en/amazon-bedrock).
+
+### Skill packaging and agent integration
+
+Use one canonical `security-assessment` plugin containing `mcp-assessment` and `skill-assessment`. Each skill supplies its own procedure and references and invokes the common engine through registered tools. Load approved immutable versions from the deployment artifact. Maintain a separate `assessment-client` skill for Claude Code that submits to the hosted service; the hosted plugin excludes this client helper to prevent recursive API submission.
+
+A plugin groups versioned skills and supporting resources; it is not another deployed agent or container. The runtime framework must explicitly load the two trusted skills. Strands is a proposed option: its `AgentSkills` integration loads skill instructions, while the application supplies resource-access tools. Alternatively, the Claude Agent SDK can load a Claude Code plugin explicitly. A Claude `.claude-plugin/plugin.json` manifest is not automatically interpreted by AgentCore or by Strands. Choose and pin the framework adapter during implementation. See [Strands skills](https://strandsagents.com/docs/user-guide/concepts/plugins/skills/) and [Claude Agent SDK plugins](https://code.claude.com/docs/en/agent-sdk/plugins).
+
+Keep the Claude Code terminal installation focused on the API client skill; do not automatically expose the hosted scanner's local execution skills there. Both distributions can live in one repository and share schema versions. If a Claude plugin format is used for the canonical package, its manifest and namespacing serve compatible hosts; the Strands adapter explicitly registers only its two skill directories. See [Claude Code skills](https://code.claude.com/docs/en/skills), [plugin packaging](https://code.claude.com/docs/en/plugins), and the [Agent Skills format](https://agentskills.io/specification).
+
+Keep skills concise; load reviewed control excerpts and detailed references as needed. Record skill and instruction versions with each assessment. Separate trusted scanner skills from target evidence paths. Do not discover or activate skills, plugins, hooks, `AGENTS.md`, or `CLAUDE.md` from an assessed repository. Referenced target scripts are evidence and must not execute. Plugin hooks and unrestricted shell tools are not required for the scanner.
+
+### Sessions, batches, and durable execution
+
+Use one bounded assessment attempt per session initially, with a fresh session ID scoped to the authenticated owner. One repository batch can contain multiple MCP or skill targets. A batch of 20 items does not automatically create 20 Runtime environments. On the proposed microVM compute type, new session IDs receive separate execution environments; calls to the same active session reuse its environment. Keep assessment ID, attempt ID, Runtime session ID, and SDK task ID distinct. See [Runtime sessions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-sessions.html).
+
+Choose application concurrency explicitly: for example, four work items within one batch, tuned after measurement. Set separate bounds for parsing, discovery, Bedrock calls, and total in-flight assessments. Reuse repository-wide observations while preserving per-target evidence and coverage. Internal tasks/subagents share the environment; separate Runtime sessions are an explicit deployment and scheduling choice. One security agent means one maintained agent application, not one globally shared session for all users.
+
+For asynchronous work, register and complete SDK background tasks, keep health responses responsive, and report busy status while work continues. Do not block the invocation/health loop with scanner work. Busy status prevents idle expiry; it does not override maximum lifetime or recover lost work. See [AWS asynchronous processing guidance](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html).
+
+Persist owner, canonical input digest, pinned versions, state, per-target progress, artifact hashes, current attempt, lease expiry, and cancellation in DynamoDB; store evidence and reports in private encrypted S3. Write acceptance before acknowledging submission. Bind idempotency keys to owner and input digest, rejecting conflicting reuse. Use conditional lease acquisition and an attempt token to prevent stale attempts publishing results. Preserve completed phases; mark missing work as interrupted or partial. An authenticated `resume_assessment` starts a new attempt after lease expiry with bounded retries. Reports remain available independently of session memory.
+
+V1 recovery is explicit: status checks identify stale attempts and callers can request resume. Automatic recovery requires a separately deployed reconciler that detects stale or accepted-but-not-started assessments and invokes a new Runtime attempt. A scheduled AWS function can provide that control-plane role without moving assessment execution out of AgentCore. SQS is optional for admission/backpressure; neither a queue nor SDK background-task tracking alone guarantees recovery. Retries may repeat discovery or inference, so do not promise exactly-once execution. Bound deadlines below the chosen Runtime limits and checkpoint before exhausting budgets.
+
+### Runtime implementation and security boundary
+
+Proposed components are Python, Pydantic contracts, the AgentCore SDK, a skill-capable agent framework or explicit skill loader, registered deterministic tools, an MCP SDK adapter, and an approved Bedrock model adapter. Keep the engine independent of the agent framework. Pin dependencies, skill/rule artifacts, and the Runtime image in ECR; use infrastructure as code for Runtime configuration, IAM, storage, and networking. A FastAPI service, Kubernetes deployment, MCP service adapter, or browser UI is not required to expose the native invocation API.
+
+Within one Runtime environment, collection, checks, and remediation have logical module boundaries but share the execution role, filesystem, and network configuration. Fast mode's lack of detection/remediation model calls is enforced and tested in code; agent orchestration still needs Bedrock access. Session compute isolation does not automatically restrict a shared role's S3 or secret permissions per assessment. Scope IAM and artifact access, check ownership in trusted code, and keep raw evidence out of ordinary model context. If stronger phase-level isolation is mandatory, use separately constrained Runtime deployments/roles or approved services. Do not claim that Python modules or subprocesses create IAM isolation.
+
+Ordinary assessment callers receive invocation access, not Runtime shell/command permissions. Expose only registered assessment operations to the agent. Validate egress destinations, redirects, and DNS as part of collection; a VPC attachment alone is not a target allowlist. Configure private connectivity for internal services and AWS APIs where required. See [Runtime security guidance](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html) and [VPC connectivity](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html).
 
 ### Evidence availability and deployment
 
@@ -81,7 +143,7 @@ Keep repository findings scoped to the inspected revision. Source-to-deployment 
 
 Deep mode does not expand permissions, invoke MCP tools, modify a target, or automatically increase detection coverage. It improves advice using the same evidence. Behavioural testing can be added later as a separate capability with an explicit scope.
 
-Neither the host model nor the remediation model may silently change deterministic findings, severity, exceptions, or policy decisions. If remediation inference fails, retain the deterministic report and mark the advisory stage unavailable or partial.
+Neither the hosted agent, client host, nor remediation model may change authoritative deterministic findings, severity, exceptions, or policy decisions. If remediation inference fails, retain the deterministic report and mark the advisory stage unavailable or partial.
 
 ### Inference boundaries
 
@@ -89,12 +151,13 @@ MCP is a communication protocol. A scripted client can connect to a server and r
 
 | Boundary | Fast mode | Deep mode |
 | --- | --- | --- |
-| Skill host/orchestrator | Uses model inference to interpret the request, orchestrate the fixed workflow, and present results | Uses host inference for the same purposes |
+| Claude Code client, when used | Uses approved host inference for invocation and presentation | Same client-host inference |
+| Hosted security agent | Uses approved Bedrock inference to follow the selected scanner skill within the enforced workflow and explain findings | Same bounded orchestration |
 | Deterministic assessment engine | No model calls; scripts establish findings, mappings, and policy results | Identical deterministic checks and results |
 | Remediation analysis | Maintained guidance returned by scripts; no dedicated model analysis | Additional Bedrock inference produces contextual suggestions |
 | Target MCP implementation | May itself use inference; discovery alone cannot establish its internals | Same uncertainty; deep mode does not expand discovery permissions |
 
-The host must present the script-produced findings faithfully. Free-form host output must not replace deterministic evidence or introduce authoritative findings. The standalone CLI omits host inference; neither execution path can guarantee that a target with unverified implementation performs no inference. Record host and remediation model usage separately where observable, and identify target-side inference as declared, observed, or unknown.
+The agent and client must present script-produced findings faithfully. Free-form output must not replace deterministic evidence or introduce authoritative findings. Only the engine's development CLI omits agent inference; the production fast agent workflow is not inference-free. Record client-host, agent, and remediation model usage separately where observable, and identify target-side inference as declared, observed, or unknown. Skill source assessment cannot establish how an unseen host actually executes that skill.
 
 ## 3. Control model
 
@@ -105,7 +168,7 @@ Evidence → assessment rule → finding → corporate control(s)
                                    → external category/categories
 ```
 
-Corporate controls define applicability, required evidence, acceptance criteria, ownership, and exception handling. MCP specifications provide version-specific requirements. OWASP MCP Top 10 provides a threat taxonomy and a coverage cross-check; broader agentic guidance is useful where host behaviour or cross-tool actions affect risk.
+Corporate controls define applicability, required evidence, acceptance criteria, ownership, and exception handling. MCP specifications provide version-specific requirements for MCP targets. OWASP MCP Top 10 provides a threat taxonomy and coverage cross-check for applicable MCP risks; skill findings use reviewed corporate mappings and relevant agentic/software-security categories. Do not force every skill finding into an MCP category. Broader agentic guidance is useful where host behaviour or cross-tool actions affect risk.
 
 Mappings should be reviewed, versioned, and many-to-many. Report a catalogue coverage gap when a relevant finding has no corporate mapping. Do not invent control identifiers or let a model create authoritative mappings.
 
@@ -115,21 +178,40 @@ Pin external reference versions or commits. OWASP’s MCP project is evolving, s
 
 ```text
 mcp-assessment/
-├── skills/
-│   └── mcp-assessment/
-│       └── SKILL.md
+├── plugins/
+│   └── security-assessment/
+│       ├── .claude-plugin/plugin.json  # If using Claude-compatible packaging
+│       └── skills/
+│           ├── mcp-assessment/
+│           │   ├── SKILL.md
+│           │   └── references/
+│           └── skill-assessment/
+│               ├── SKILL.md
+│               └── references/
+├── clients/claude-code/
+│   └── skills/assessment-client/
+│       ├── SKILL.md
+│       └── scripts/                  # Hosted API helper only
 ├── src/mcp_assessment/
+│   ├── agent/                        # Explicit trusted skill loading
+│   ├── runtime/                      # Invocation, auth, lifecycle
+│   ├── tools/                        # Registered engine operations
 │   ├── contracts/
 │   ├── collectors/
 │   ├── checks/
+│   │   ├── mcp/
+│   │   ├── skill/
+│   │   └── shared/
 │   ├── policy/
 │   ├── reporting/
 │   ├── remediation/
 │   ├── storage/
-│   ├── cli/
-│   ├── api/
-│   └── workers/
+│   ├── clients/
+│   └── cli/                          # Development and API client
 ├── rules/
+│   ├── mcp/
+│   ├── skill/
+│   └── shared/
 ├── references/
 │   ├── corporate-controls.yaml
 │   ├── control-mappings.yaml
@@ -142,16 +224,18 @@ mcp-assessment/
 │   └── remediation.schema.json
 ├── assets/report-template.md
 ├── deploy/
-│   ├── helm/
+│   ├── agentcore/
 │   └── infrastructure/
 └── tests/
     ├── fixtures/
     └── expected-results/
 ```
 
-Keep `SKILL.md` focused on invocation, inputs, permissions, mode/backend selection, execution, and interpretation. Store control text, reference material, and executable checks separately. Package the shared engine so local CLI and EKS workers use the same implementations; API routing and skill instructions must not duplicate security logic. This structure is a proposal, not a list of existing files.
+Keep scanner `SKILL.md` files focused on the target-specific procedure and references; keep the client skill focused on API invocation and report retrieval. Store control text and executable checks separately and reuse their implementations across both scanners. Enforce permissions and mode selection in code. The Python package name and repository directory are retained for continuity. This structure is a proposal, not a list of existing files.
 
 ## 5. Assessment coverage
+
+### MCP scanner
 
 | Area | Initial checks and limitations |
 | --- | --- |
@@ -173,9 +257,26 @@ Select checks using the target’s declared and observed protocol version and fe
 
 HTTP and stdio need different authentication checks. Public access is a finding only where the exposed capability and corporate policy require protection. See [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
 
+### Skill scanner
+
+| Area | Initial checks and limitations |
+| --- | --- |
+| Identity and format | Applicable `SKILL.md` metadata, name/path consistency, owner, declared purpose, missing referenced resources; format compliance alone is not security assurance |
+| Instructions and authority | Indicators of host-policy bypass, hidden actions, unrelated secret requests, excessive delegation, or persistent permission changes; semantic indicators remain heuristic |
+| Declared capabilities | Broad tool, filesystem, and network access compared with intended use; declarations do not prove enforcement by the host |
+| Bundled scripts | Unsafe command construction, dynamic execution, credential access, download-and-execute patterns, destructive operations, and unrestricted reads/writes, inspected statically |
+| Dependencies and provenance | Version pinning, lockfiles, package identity, internal vulnerability data and freshness, unverifiable binaries |
+| Data handling | Sensitive collection, outbound destinations, logging/report exposure, retention instructions |
+| References and paths | Traversal, symlink escape, absolute paths, missing helpers, and remote references outside approved evidence scope |
+| Containing-plugin context | Relevant hooks, MCP configuration, agents, commands, and settings that affect the selected skill; inspect as data without installing the plugin |
+
+Skills legitimately contain instructions. Imperative wording alone is not a finding. Assess instructions against intended purpose, corporate policy, and available evidence. Validate the [Agent Skills format](https://agentskills.io/specification) while treating host-specific fields separately; do not assume a field such as `allowed-tools` is a security boundary across hosts.
+
+Link cross-file evidence, such as a skill instruction invoking a script that reads credentials and sends them to a destination. A plugin hook or configured MCP server may affect several skills; record shared findings once with explicit affected-target links. A reference to an MCP does not authorise connecting to it. Include missing related artifacts in coverage; source findings do not prove runtime behaviour. A mixed batch preserves separate target-type coverage and does not apply MCP-only controls to skill files.
+
 ## 6. Discovery permissions and scanner threat model
 
-Treat the MCP server, supplied source, manifests, descriptions, schemas, and returned content as untrusted input. They may try to influence the scanner, exhaust resources, access internal destinations, or place malicious instructions in the remediation prompt.
+Treat MCP servers, skill packages, supplied source, manifests, descriptions, schemas, and returned content as untrusted input. They may try to influence the scanner, exhaust resources, access internal destinations, or place malicious instructions in the agent or remediation prompt. Keep target skills and plugin files outside trusted discovery paths; inspecting them never installs or activates them.
 
 The assessment manifest should identify allowed targets, permitted operations, credential references, timeouts, response limits, and retention requirements. Credentials should be obtained through approved secret handling rather than embedded in manifests or reports.
 
@@ -201,14 +302,14 @@ Recommended check states are `pass`, `fail`, `unknown`, `not_applicable`, `error
 
 Each finding should retain:
 
-- Finding ID, rule/version, target identity, context, and timestamp.
+- Finding ID, rule/version, target ID/type, affected-target links, context, and timestamp.
 - Evidence references, hashes, locations, and redacted excerpts.
 - Repository revision or snapshot identity where source is supplied, and source-to-deployment correspondence where an endpoint is also assessed.
 - Observed, declared, or inferred evidence classification.
 - Corporate mappings and external categories.
 - Severity, confidence, limitations, remediation, and verification steps.
 
-Store raw evidence separately with restricted access. Reports should reference it without unnecessarily copying secrets or sensitive source content. Record scanner, rule-pack, mapping, and reference versions for reproducibility.
+Store raw evidence separately with restricted access. Reports should reference it without unnecessarily copying secrets or sensitive source content. Record scanner, plugin/skill, runtime artifact, agent configuration, rule-pack, mapping, and reference versions for reproducibility. Use typed target references so the same repository can contain MCP and skill targets without mixing their coverage.
 
 Generate `findings.json`, `coverage.json`, and a readable report first. Add SARIF when needed by internal developer workflows. Report unresolved mandatory checks alongside any policy result. Endpoint-only assessments have narrower assurance: no observed weakness is not evidence that inaccessible controls work.
 
@@ -216,7 +317,7 @@ Generate `findings.json`, `coverage.json`, and a readable report first. Add SARI
 
 Send only selected findings, relevant control text, and necessary redacted excerpts. Retrieve control text locally by reviewed IDs; a vector database is unnecessary for the initial design.
 
-Use an approved inference profile with least-privilege IAM permissions. Record profile, model, prompt version, and inference settings. The remediation model receives no execution tools and cannot fetch additional evidence or act on target instructions. The skill host may launch the assessment engine within the configured scope; that orchestration permission does not extend to the remediation model.
+Use an approved inference profile with least-privilege IAM permissions. Record profile, model, prompt version, and inference settings. The remediation model receives no execution tools and cannot fetch additional evidence or act on target instructions. The hosted security agent can invoke registered engine operations within the configured scope; that orchestration permission does not extend to the remediation model. The two scanner skills share this advisory adapter. Hosting on AgentCore does not select the approved model or profile automatically.
 
 Require structured suggestions containing finding ID, proposed fix, evidence IDs, assumptions, and verification steps. Reject malformed output and unknown references. Keep advice visibly separate from deterministic results.
 
@@ -224,20 +325,25 @@ Where appropriate, use [Bedrock private connectivity](https://docs.aws.amazon.co
 
 ## 9. Delivery milestones and open decisions
 
-1. Define input, evidence, result, and mapping schemas using representative corporate controls.
-2. Implement the deterministic CLI with fixtures and a small set of high-confidence checks.
-3. Add bounded, explicitly permitted discovery and honest coverage reporting.
-4. Add the Bedrock adapter and validate advisory output isolation.
-5. Deliver the Claude Code terminal skill with local CLI execution and authenticated submission to the service.
-6. Deliver the API application and EKS Jobs with asynchronous status, authorised report access, bounded execution, and retry/idempotency handling.
-7. Pilot both interfaces against known benign and vulnerable fixtures, then internal and external MCPs across source-only, endpoint-only, and combined evidence configurations.
+1. Define typed MCP/skill input, evidence, finding, coverage, and mapping schemas using representative corporate controls.
+2. Implement the shared engine and separate rule packs with fixtures and a small set of high-confidence checks for each target type.
+3. Add bounded, explicitly permitted MCP discovery and inert skill/plugin source inspection with honest coverage reporting.
+4. Author the two scanner skills in one trusted plugin, implement explicit loading and registered tools, and enforce the pipeline outside model instructions.
+5. Add approved Bedrock agent orchestration and deep remediation, validating the separation from deterministic results.
+6. Deploy the security agent on AgentCore Runtime with authenticated typed invocation, ownership checks, durable status/artifacts, bounded batch execution, cancellation, and explicit interruption recovery.
+7. Deliver the Claude Code terminal client skill/helper against the hosted API; optional client plugin packaging follows the organisation's distribution policy.
+8. Pilot both clients against known benign and vulnerable fixtures, including source-only, endpoint-only, combined MCP evidence, skill packages, and mixed repositories.
 
-Acceptance tests should verify that the fast assessment engine makes no model calls; host orchestration uses approved inference configuration and preserves script-produced findings; discovery never becomes tool execution; malformed, hostile, or inaccessible targets yield bounded results; missing evidence remains visible; and deep remediation preserves deterministic findings. Target-side inference cannot be ruled out from endpoint discovery alone.
+Acceptance tests should verify that the deterministic engine makes no model calls; fast agent workflows cannot invoke the dedicated remediation stage; agent/client orchestration uses approved inference configuration and preserves script-produced findings; discovery never becomes target tool execution; malformed, hostile, or inaccessible targets yield bounded results; missing evidence remains visible; and deep remediation preserves deterministic findings. Target-side inference cannot be ruled out from endpoint discovery alone.
 
 Include external MCP repository fixtures and internal MCP endpoint-only fixtures. Verify that evidence availability controls technical check selection, and that an unverified or mismatched source revision cannot produce an unsupported deployment-level pass.
 
-Verify that local CLI and API/EKS execution produce equivalent deterministic findings and control mappings for the same captured evidence, engine, rules, and catalogue versions, excluding run metadata. Live observations and model suggestions may differ between runs. Test fast/deep selection through both interfaces, caller isolation, remote source-reference handling, and recovery of asynchronous jobs. The API execution path must work without Claude Code installed.
+Verify that the client skill and direct API produce equivalent deterministic findings and control mappings for the same captured evidence, engine, rules, and catalogue versions, excluding run metadata. Live observations and model suggestions may differ between runs. Test mode and target-type selection, unknown skill names, mandatory phase completion, authorised evidence references, and report ownership. Ordinary API consumers must work without a local Claude Code installation.
 
-Decisions still needed: corporate catalogue format and sample controls; supported protocol versions and transports; discovery allowlists and authentication arrangements; severity and mandatory-unknown policy; evidence retention and redaction; internal vulnerability dataset; Bedrock profile/model/regions; Claude Code skill distribution; API identity integration and local-versus-EKS execution policy; and reassessment cadence.
+Test duplicate submissions, idempotency-key conflicts, lost responses, accepted-but-not-started work, session termination, stale leases, explicit resume, cancellation, hung checks, and partial deep-mode failure. Verify per-batch and inference concurrency limits. Exercise a 20-target batch without assuming 20 sessions. Confirm interrupted attempts cannot overwrite newer results.
+
+Add skill fixtures containing malicious instructions, misleading `allowed-tools`, escaping paths, bundled download-and-execute scripts, plugin hooks, and linked MCP configuration. Confirm the scanner never installs or activates target skills/plugins, reads target repository instructions as trusted policy, or invokes its own client skill recursively. Test the trusted scanner plugin itself before promotion and pin the release under test.
+
+Decisions still needed: corporate catalogue format and sample controls; supported MCP revisions/transports and skill/plugin dialects; discovery allowlists and credentials; severity and mandatory-unknown policy; evidence retention/redaction; internal vulnerability dataset; approved Bedrock profile/model/regions; agent framework and trusted skill loader; plugin/client distribution; API authentication and verified identity propagation; per-phase isolation requirements; batch/runtime budgets; whether automatic recovery is required beyond explicit resume; and reassessment cadence.
 
 The Git repository should initially contain design, schemas, reviewed rules, and synthetic fixtures. Runtime evidence, credentials, generated sensitive reports, and unapproved corporate material require explicit handling rules before they are committed.
