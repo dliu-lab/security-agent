@@ -6,12 +6,12 @@ This document records the initial design for an internal Model Context Protocol 
 
 ## 1. Confirmed scope
 
-- Internal MCPs usually provide source code and configuration; external MCPs may provide only an endpoint.
+- Both internal and external MCPs may provide repository source code, configuration, deployment artifacts, endpoint evidence, or a combination. Source availability is independent of ownership.
 - Assessments use supplied files plus explicitly allowed discovery connections.
 - Both modes use host-model inference when invoked as an LLM-hosted skill. Inference controlled by the deployed workflow, including host orchestration, must use approved AWS Bedrock configurations.
 - Fast mode runs deterministic assessment scripts and produces findings, coverage, and maintained remediation guidance. The assessment engine makes no model calls for detection or remediation.
 - Deep mode runs the same scripts first, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
-- The assessment does not depend on external assessment products or public inference APIs. Approved MCP endpoints and AWS Bedrock are explicit network dependencies when their respective capabilities are enabled.
+- The assessment does not depend on external assessment products or public inference APIs. Explicitly approved repository retrieval, MCP endpoints, and AWS Bedrock are network dependencies when their respective capabilities are enabled.
 - The corporate catalogue is the policy authority. External guidance supplements threat coverage and finding labels.
 
 The deterministic engine should also run directly in a CLI or CI job without a host LLM. This is an optional execution path, not a claim that the full skill workflow is inference-free. Any assistant handling corporate controls or evidence must use an approved environment.
@@ -27,13 +27,29 @@ Scope and policy → evidence collection → normalized evidence
         └── minimized evidence → Bedrock → validated remediation → deep report
 ```
 
-Keep three independent configuration dimensions:
+Keep these configuration dimensions separate:
 
 | Dimension | Proposed values or content |
 | --- | --- |
 | Analysis mode | `fast`, `deep` |
-| Evidence access | Supplied files; explicitly permitted discovery; future separately authorised testing |
-| Target context | Ownership, transport, protocol version, deployment, sensitivity, available evidence |
+| Ownership/origin | Internal, external; identify the owner or maintainer |
+| Evidence available | Repository source, configuration, deployment artifacts, endpoint observations; any combination for either origin |
+| Permitted access | Supplied files; explicitly approved repository retrieval and discovery; future separately authorised testing |
+| Deployment context | Company-hosted or provider-hosted, transport, protocol version, data sensitivity |
+
+### Evidence availability and deployment
+
+Choose collectors and checks by available evidence and permitted access. Apply the same technical rule to comparable evidence regardless of whether the MCP is internal or external; corporate policy may add ownership-specific requirements. An externally maintained MCP may be hosted by the company or by its provider.
+
+| Available evidence | Applies to | Assessment coverage |
+| --- | --- | --- |
+| Repository source and any supplied configuration | Internal or external MCPs | Static implementation, dependency, secret, and configuration checks; deployment-only controls may remain unknown |
+| Endpoint observations only | Internal or external MCPs | Permitted discovery and observable protocol/configuration properties; inaccessible implementation controls remain unknown |
+| Source/configuration plus endpoint observations | Internal or external MCPs | Combine static and observed evidence while recording whether the inspected source matches the running deployment |
+
+Accept source as a pinned checkout or archive. Repository retrieval must be explicitly permitted, read-only, and bounded; a repository URL does not authorise executing its code, running hooks or builds, installing dependencies, following arbitrary links, or launching an MCP server. Record repository identity, commit or snapshot digest, local modifications and content hashes, relevant paths, and available deployment artifact/version identifiers. A branch name alone is insufficient to identify the assessed snapshot.
+
+Keep repository findings scoped to the inspected revision. Source-to-deployment correspondence should be recorded as verified, unverified, or mismatched, with supporting evidence. Do not treat a clean repository assessment as verification of a provider's running service. Where correspondence is unverified, report source and endpoint conclusions separately.
 
 Deep mode does not expand permissions, invoke MCP tools, modify a target, or automatically increase detection coverage. It improves advice using the same evidence. Behavioural testing can be added later as a separate capability with an explicit scope.
 
@@ -50,7 +66,7 @@ MCP is a communication protocol. A scripted client can connect to a server and r
 | Remediation analysis | Maintained guidance returned by scripts; no dedicated model analysis | Additional Bedrock inference produces contextual suggestions |
 | Target MCP implementation | May itself use inference; discovery alone cannot establish its internals | Same uncertainty; deep mode does not expand discovery permissions |
 
-The host must present the script-produced findings faithfully. Free-form host output must not replace deterministic evidence or introduce authoritative findings. The standalone CLI omits host inference; neither execution path can guarantee that an external target performs no inference. Record host and remediation model usage separately where observable, and identify target-side inference as declared, observed, or unknown.
+The host must present the script-produced findings faithfully. Free-form host output must not replace deterministic evidence or introduce authoritative findings. The standalone CLI omits host inference; neither execution path can guarantee that a target with unverified implementation performs no inference. Record host and remediation model usage separately where observable, and identify target-side inference as declared, observed, or unknown.
 
 ## 3. Control model
 
@@ -149,6 +165,7 @@ Each finding should retain:
 
 - Finding ID, rule/version, target identity, context, and timestamp.
 - Evidence references, hashes, locations, and redacted excerpts.
+- Repository revision or snapshot identity where source is supplied, and source-to-deployment correspondence where an endpoint is also assessed.
 - Observed, declared, or inferred evidence classification.
 - Corporate mappings and external categories.
 - Severity, confidence, limitations, remediation, and verification steps.
@@ -173,9 +190,11 @@ Where appropriate, use [Bedrock private connectivity](https://docs.aws.amazon.co
 2. Implement the deterministic CLI with fixtures and a small set of high-confidence checks.
 3. Add bounded, explicitly permitted discovery and honest coverage reporting.
 4. Add the Bedrock adapter and validate advisory output isolation.
-5. Pilot against known benign and vulnerable fixtures, then representative internal and external MCPs.
+5. Pilot against known benign and vulnerable fixtures, then internal and external MCPs across source-only, endpoint-only, and combined evidence configurations.
 
 Acceptance tests should verify that the fast assessment engine makes no model calls; host orchestration uses approved inference configuration and preserves script-produced findings; discovery never becomes tool execution; malformed, hostile, or inaccessible targets yield bounded results; missing evidence remains visible; and deep remediation preserves deterministic findings. Target-side inference cannot be ruled out from endpoint discovery alone.
+
+Include external MCP repository fixtures and internal MCP endpoint-only fixtures. Verify that evidence availability controls technical check selection, and that an unverified or mismatched source revision cannot produce an unsupported deployment-level pass.
 
 Decisions still needed: corporate catalogue format and sample controls; supported protocol versions and transports; discovery allowlists and authentication arrangements; severity and mandatory-unknown policy; evidence retention and redaction; internal vulnerability dataset; Bedrock profile/model/regions; and reassessment cadence.
 
