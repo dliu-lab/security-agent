@@ -1,8 +1,14 @@
 # MCP Assessment
 
-Design and research for an internal Model Context Protocol security assessment skill.
+Design and research for an internal Model Context Protocol security assessment capability.
 
 **Status:** proposed design. This repository currently contains research findings and design decisions; it does not yet contain an executable scanner.
+
+## Objective
+
+Build one reusable MCP security assessment engine delivered through both a skill runnable from the Claude Code terminal and an authenticated API-enabled application deployed on Amazon EKS. Both interfaces share assessment contracts, deterministic checks, corporate-control mappings, reports, and fast/deep mode definitions. Assess internal and external MCPs using available source/configuration and permitted endpoint evidence, with additional AWS Bedrock remediation analysis in deep mode.
+
+The Claude Code skill can invoke the local CLI or submit assessments to the EKS service. Execution location (`local` or `eks`) is independent of analysis mode (`fast` or `deep`). The application API supports programmatic callers without requiring a Claude Code session.
 
 ## Start here
 
@@ -29,7 +35,9 @@ Repository assessments identify the inspected commit or snapshot. When a running
 2. Review a representative sample of corporate controls and define applicability and evidence requirements.
 3. Implement the deterministic engine and bounded discovery collectors.
 4. Add rule fixtures and report generation.
-5. Add the restricted Bedrock remediation adapter and skill wrapper.
+5. Add the restricted Bedrock remediation adapter and Claude Code terminal skill around the shared CLI.
+6. Deliver the authenticated API application and EKS worker deployment, with submission, status, and report retrieval.
+7. Verify equivalent deterministic results across interfaces for the same evidence snapshots and rule versions.
 
 ## Local data
 

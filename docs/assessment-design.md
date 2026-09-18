@@ -1,13 +1,18 @@
-# MCP Assessment Skill — Proposed Design
+# MCP Assessment Capability — Skill and API Application Design
 
-Status: design proposal; assessment engine, skill, rules, and integrations are not implemented.
+Status: design proposal; assessment engine, Claude Code skill, API application, EKS deployment, rules, and integrations are not implemented.
 
 This document records the initial design for an internal Model Context Protocol (MCP) assessment capability. Its purpose is to gather evidence, identify security findings, map them to the corporate control catalogue, and explain assessment limitations. A scan alone does not establish that an MCP is safe for every use.
+
+## Objective
+
+Build one reusable MCP security assessment engine delivered through both a skill runnable from the Claude Code terminal and an authenticated API-enabled application deployed on Amazon EKS. Both interfaces share assessment contracts, deterministic checks, corporate-control mappings, reports, and fast/deep mode definitions. Assess internal and external MCPs using available source/configuration and permitted endpoint evidence, with additional AWS Bedrock remediation analysis in deep mode.
 
 ## 1. Confirmed scope
 
 - Both internal and external MCPs may provide repository source code, configuration, deployment artifacts, endpoint evidence, or a combination. Source availability is independent of ownership.
 - Assessments use supplied files plus explicitly allowed discovery connections.
+- Deliver a Claude Code terminal skill and an API-enabled application backed by the same engine. The skill supports local CLI execution or submission to the configured EKS service; API callers do not require a Claude Code session.
 - Both modes use host-model inference when invoked as an LLM-hosted skill. Inference controlled by the deployed workflow, including host orchestration, must use approved AWS Bedrock configurations.
 - Fast mode runs deterministic assessment scripts and produces findings, coverage, and maintained remediation guidance. The assessment engine makes no model calls for detection or remediation.
 - Deep mode runs the same scripts first, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
@@ -18,7 +23,16 @@ The deterministic engine should also run directly in a CLI or CI job without a h
 
 ## 2. Architecture and mode boundaries
 
-Use a thin skill wrapper around a deterministic assessment engine:
+Use thin skill and API adapters around one reusable assessment engine:
+
+```text
+Claude Code skill → local CLI → shared assessment engine
+Claude Code skill or API client → authenticated API → EKS Jobs
+                                                         ↓
+                                               Same assessment engine
+```
+
+The engine uses the same pipeline through either interface:
 
 ```text
 Scope and policy → evidence collection → normalized evidence
@@ -32,10 +46,24 @@ Keep these configuration dimensions separate:
 | Dimension | Proposed values or content |
 | --- | --- |
 | Analysis mode | `fast`, `deep` |
+| Invocation interface | Claude Code terminal skill, standalone CLI, application API |
+| Execution backend | `local`, `eks`; independent of analysis mode |
 | Ownership/origin | Internal, external; identify the owner or maintainer |
 | Evidence available | Repository source, configuration, deployment artifacts, endpoint observations; any combination for either origin |
 | Permitted access | Supplied files; explicitly approved repository retrieval and discovery; future separately authorised testing |
 | Deployment context | Company-hosted or provider-hosted, transport, protocol version, data sensitivity |
+
+### Delivery interfaces and EKS deployment
+
+The Claude Code skill collects scope and mode, invokes the packaged CLI or configured service, and presents the resulting findings. Package the skill with `SKILL.md` and install it in a supported Claude Code skill location, such as `.claude/skills/mcp-assessment/SKILL.md` for a project. Keep assessment logic in the engine so the skill does not maintain a second set of checks. See the official [Claude Code skill documentation](https://code.claude.com/docs/en/skills).
+
+The API application accepts validated manifests, authorises the caller's requested targets, creates asynchronous assessments, exposes status, and authorises report retrieval. Proposed routes are `POST /v1/assessments`, `GET /v1/assessments/{id}`, and `GET /v1/assessments/{id}/report`. The API does not execute arbitrary shell commands or accept caller-supplied Kubernetes manifests. API caller identity is separate from repository and MCP target credentials.
+
+For remote execution, source inputs must identify an uploaded snapshot or explicitly approved repository revision; the service cannot assume access to the caller's local paths. Preserve input hashes, rules, mappings, and catalogue versions across interfaces. Both modes are available through both delivery interfaces. A direct fast API/CLI request requires no host-model inference; an LLM-hosted skill still uses host inference. Configure Claude Code host inference through approved Bedrock settings as well as the deep remediation stage. See [Claude Code on Amazon Bedrock](https://code.claude.com/docs/en/amazon-bedrock).
+
+The proposed implementation uses Python with Pydantic contracts, a CLI adapter, and a FastAPI application. Run assessment work in bounded Kubernetes Jobs on EKS. Separate repository collection, endpoint discovery, deterministic analysis, and Bedrock remediation into execution roles with their own network and credential scope. S3 stores evidence and reports; SQS and a DynamoDB scan registry support the shared service's asynchronous submissions, idempotency, and status. Pin dependencies and worker images, and package deployment configuration with Helm and the organisation's infrastructure tooling. This is an implementation recommendation, not deployed functionality.
+
+The shared engine does not depend on Claude Code, and the application API need not be an MCP server. A browser UI or additional MCP service adapter remains an optional future interface; neither is required by the current API-enabled application objective.
 
 ### Evidence availability and deployment
 
@@ -87,13 +115,20 @@ Pin external reference versions or commits. OWASP’s MCP project is evolving, s
 
 ```text
 mcp-assessment/
-├── SKILL.md
-├── scripts/
-│   ├── assess
+├── skills/
+│   └── mcp-assessment/
+│       └── SKILL.md
+├── src/mcp_assessment/
+│   ├── contracts/
 │   ├── collectors/
 │   ├── checks/
+│   ├── policy/
 │   ├── reporting/
-│   └── bedrock/
+│   ├── remediation/
+│   ├── storage/
+│   ├── cli/
+│   ├── api/
+│   └── workers/
 ├── rules/
 ├── references/
 │   ├── corporate-controls.yaml
@@ -106,12 +141,15 @@ mcp-assessment/
 │   ├── finding.schema.json
 │   └── remediation.schema.json
 ├── assets/report-template.md
+├── deploy/
+│   ├── helm/
+│   └── infrastructure/
 └── tests/
     ├── fixtures/
     └── expected-results/
 ```
 
-Keep `SKILL.md` focused on invocation, inputs, permissions, mode selection, execution, and interpretation. Store control text, reference material, and executable checks separately. This structure is a proposal, not a list of existing files.
+Keep `SKILL.md` focused on invocation, inputs, permissions, mode/backend selection, execution, and interpretation. Store control text, reference material, and executable checks separately. Package the shared engine so local CLI and EKS workers use the same implementations; API routing and skill instructions must not duplicate security logic. This structure is a proposal, not a list of existing files.
 
 ## 5. Assessment coverage
 
@@ -190,12 +228,16 @@ Where appropriate, use [Bedrock private connectivity](https://docs.aws.amazon.co
 2. Implement the deterministic CLI with fixtures and a small set of high-confidence checks.
 3. Add bounded, explicitly permitted discovery and honest coverage reporting.
 4. Add the Bedrock adapter and validate advisory output isolation.
-5. Pilot against known benign and vulnerable fixtures, then internal and external MCPs across source-only, endpoint-only, and combined evidence configurations.
+5. Deliver the Claude Code terminal skill with local CLI execution and authenticated submission to the service.
+6. Deliver the API application and EKS Jobs with asynchronous status, authorised report access, bounded execution, and retry/idempotency handling.
+7. Pilot both interfaces against known benign and vulnerable fixtures, then internal and external MCPs across source-only, endpoint-only, and combined evidence configurations.
 
 Acceptance tests should verify that the fast assessment engine makes no model calls; host orchestration uses approved inference configuration and preserves script-produced findings; discovery never becomes tool execution; malformed, hostile, or inaccessible targets yield bounded results; missing evidence remains visible; and deep remediation preserves deterministic findings. Target-side inference cannot be ruled out from endpoint discovery alone.
 
 Include external MCP repository fixtures and internal MCP endpoint-only fixtures. Verify that evidence availability controls technical check selection, and that an unverified or mismatched source revision cannot produce an unsupported deployment-level pass.
 
-Decisions still needed: corporate catalogue format and sample controls; supported protocol versions and transports; discovery allowlists and authentication arrangements; severity and mandatory-unknown policy; evidence retention and redaction; internal vulnerability dataset; Bedrock profile/model/regions; and reassessment cadence.
+Verify that local CLI and API/EKS execution produce equivalent deterministic findings and control mappings for the same captured evidence, engine, rules, and catalogue versions, excluding run metadata. Live observations and model suggestions may differ between runs. Test fast/deep selection through both interfaces, caller isolation, remote source-reference handling, and recovery of asynchronous jobs. The API execution path must work without Claude Code installed.
+
+Decisions still needed: corporate catalogue format and sample controls; supported protocol versions and transports; discovery allowlists and authentication arrangements; severity and mandatory-unknown policy; evidence retention and redaction; internal vulnerability dataset; Bedrock profile/model/regions; Claude Code skill distribution; API identity integration and local-versus-EKS execution policy; and reassessment cadence.
 
 The Git repository should initially contain design, schemas, reviewed rules, and synthetic fixtures. Runtime evidence, credentials, generated sensitive reports, and unapproved corporate material require explicit handling rules before they are committed.
