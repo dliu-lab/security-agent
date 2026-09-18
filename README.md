@@ -8,7 +8,7 @@ Design and research for an internal security assessment agent covering Model Con
 
 Build one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode.
 
-AgentCore Runtime is the required production hosting environment and replaces the earlier EKS deployment proposal. The two scanner skills run inside the hosted agent; a separate Claude Code terminal client skill invokes the same API. Application callers do not require a Claude Code session. A local CLI supports engine development and verification. Both fast and deep assessments run through the deployed agent. The existing `mcp-assessment/` directory is retained while the design expands.
+AgentCore Runtime is the required production hosting environment and replaces the earlier EKS deployment proposal. The two scanner skills run inside the hosted agent; a separate Claude Code terminal client skill invokes the same API. Application callers do not require a Claude Code session. A local CLI supports engine development and verification. Both fast and deep assessments run through the deployed agent.
 
 ## Start here
 

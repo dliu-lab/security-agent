@@ -177,7 +177,7 @@ Pin external reference versions or commits. OWASP’s MCP project is evolving, s
 ## 4. Proposed package structure
 
 ```text
-mcp-assessment/
+security-assessment/
 ├── plugins/
 │   └── security-assessment/
 │       ├── .claude-plugin/plugin.json  # If using Claude-compatible packaging
@@ -192,7 +192,7 @@ mcp-assessment/
 │   └── skills/assessment-client/
 │       ├── SKILL.md
 │       └── scripts/                  # Hosted API helper only
-├── src/mcp_assessment/
+├── src/security_assessment/
 │   ├── agent/                        # Explicit trusted skill loading
 │   ├── runtime/                      # Invocation, auth, lifecycle
 │   ├── tools/                        # Registered engine operations
@@ -231,7 +231,7 @@ mcp-assessment/
     └── expected-results/
 ```
 
-Keep scanner `SKILL.md` files focused on the target-specific procedure and references; keep the client skill focused on API invocation and report retrieval. Store control text and executable checks separately and reuse their implementations across both scanners. Enforce permissions and mode selection in code. The Python package name and repository directory are retained for continuity. This structure is a proposal, not a list of existing files.
+Keep scanner `SKILL.md` files focused on the target-specific procedure and references; keep the client skill focused on API invocation and report retrieval. Store control text and executable checks separately and reuse their implementations across both scanners. Enforce permissions and mode selection in code. This structure is a proposal, not a list of existing files.
 
 ## 5. Assessment coverage
 
