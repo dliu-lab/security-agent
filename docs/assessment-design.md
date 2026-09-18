@@ -1,12 +1,14 @@
-# Security Assessment Agent — MCP and Skill Scanners on AgentCore
+# Security Agent — MCP and Skill Assessment Design
 
 Status: design proposal; assessment skills, agent, engine, AgentCore deployment, rules, and integrations are not implemented.
+
+For the system architecture and principal flows, start with the [Security Agent high-level design](high-level-design.md).
 
 This document records the design for an internal security assessment capability covering Model Context Protocol (MCP) servers and agent skill packages. Its purpose is to gather evidence, identify security findings, map them to the corporate control catalogue, and explain assessment limitations. A scan alone does not establish that a target is safe for every use.
 
 ## Objective
 
-Build one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode. Provide Claude Code terminal access through a separate client skill.
+Build Security Agent as one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode. Provide Claude Code terminal access through a separate client skill.
 
 This decision replaces the earlier EKS application and worker deployment proposal. AgentCore Runtime hosts the production agent and assessment execution. A local engine CLI remains useful for development and fixtures; it is not an alternative production hosting requirement.
 

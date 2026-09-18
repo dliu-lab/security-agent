@@ -1,4 +1,4 @@
-# Security Assessment Agent
+# Security Agent
 
 Design and research for an internal security assessment agent covering Model Context Protocol (MCP) servers and agent skill packages.
 
@@ -6,13 +6,15 @@ Design and research for an internal security assessment agent covering Model Con
 
 ## Objective
 
-Build one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode.
+Build Security Agent as one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode.
 
 AgentCore Runtime is the required production hosting environment and replaces the earlier EKS deployment proposal. The two scanner skills run inside the hosted agent; a separate Claude Code terminal client skill invokes the same API. Application callers do not require a Claude Code session. A local CLI supports engine development and verification. Both fast and deep assessments run through the deployed agent.
 
 ## Start here
 
-Read [the assessment design](docs/assessment-design.md) for the proposed architecture, control coverage, evidence model, discovery boundaries, Bedrock integration, and implementation milestones.
+Read the [Security Agent high-level design](docs/high-level-design.md) for architecture diagrams, component responsibilities, API and execution flows, data/security boundaries, deployment, resilience, and open decisions.
+
+Read [the detailed assessment design](docs/assessment-design.md) for control coverage, rule contracts, evidence requirements, and implementation considerations.
 
 ## Confirmed scope
 
