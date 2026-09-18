@@ -13,10 +13,13 @@ Read [the assessment design](docs/assessment-design.md) for the proposed archite
 - Assess internal MCPs using available source code and configuration.
 - Assess external MCPs using available endpoint evidence.
 - Inspect supplied files and make explicitly allowed discovery connections.
-- Fast mode uses deterministic scripts without inference calls.
-- Deep mode runs the same checks, then uses an approved AWS Bedrock inference profile for remediation suggestions.
+- Both modes use host-model inference when invoked as an LLM-hosted skill. Inference controlled by the deployed workflow, including host orchestration, must use approved AWS Bedrock configurations.
+- Fast mode runs deterministic assessment scripts and returns their findings; the assessment engine makes no model calls for detection or remediation.
+- Deep mode runs the same deterministic checks, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
 - Use the corporate control catalogue as the primary policy reference, with reviewed mappings to external MCP threat categories.
 - Runtime assessment must not depend on external scanning services or public inference APIs. Allowed target discovery and the approved Bedrock service are explicit network exceptions.
+
+MCP communication itself does not require model inference: a scripted client can perform discovery. Host orchestration, assessment-engine analysis, and any inference inside the target MCP are separate boundaries. Fast mode makes no claim about a target server's internal implementation. See [inference boundaries in the design](docs/assessment-design.md#inference-boundaries).
 
 ## Next implementation steps
 

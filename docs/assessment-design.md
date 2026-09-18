@@ -8,12 +8,13 @@ This document records the initial design for an internal Model Context Protocol 
 
 - Internal MCPs usually provide source code and configuration; external MCPs may provide only an endpoint.
 - Assessments use supplied files plus explicitly allowed discovery connections.
-- Fast mode runs deterministic scripts and produces findings, coverage, and maintained remediation guidance.
-- Deep mode runs the same scripts first, then uses an approved AWS Bedrock inference profile for contextual remediation suggestions.
+- Both modes use host-model inference when invoked as an LLM-hosted skill. Inference controlled by the deployed workflow, including host orchestration, must use approved AWS Bedrock configurations.
+- Fast mode runs deterministic assessment scripts and produces findings, coverage, and maintained remediation guidance. The assessment engine makes no model calls for detection or remediation.
+- Deep mode runs the same scripts first, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
 - The assessment does not depend on external assessment products or public inference APIs. Approved MCP endpoints and AWS Bedrock are explicit network dependencies when their respective capabilities are enabled.
 - The corporate catalogue is the policy authority. External guidance supplements threat coverage and finding labels.
 
-The deterministic engine should also run directly in a CLI or CI job. Invoking a skill through an LLM assistant still involves inference; strict zero-inference fast mode requires the direct engine path. Any assistant handling corporate controls or evidence must use an approved environment.
+The deterministic engine should also run directly in a CLI or CI job without a host LLM. This is an optional execution path, not a claim that the full skill workflow is inference-free. Any assistant handling corporate controls or evidence must use an approved environment.
 
 ## 2. Architecture and mode boundaries
 
@@ -36,7 +37,20 @@ Keep three independent configuration dimensions:
 
 Deep mode does not expand permissions, invoke MCP tools, modify a target, or automatically increase detection coverage. It improves advice using the same evidence. Behavioural testing can be added later as a separate capability with an explicit scope.
 
-The model must not silently change deterministic findings, severity, exceptions, or policy decisions. If inference fails, retain the deterministic report and mark the advisory stage unavailable or partial.
+Neither the host model nor the remediation model may silently change deterministic findings, severity, exceptions, or policy decisions. If remediation inference fails, retain the deterministic report and mark the advisory stage unavailable or partial.
+
+### Inference boundaries
+
+MCP is a communication protocol. A scripted client can connect to a server and request discovery results without invoking a model; the official [MCP Inspector CLI documentation](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector/cli) demonstrates scripted MCP requests.
+
+| Boundary | Fast mode | Deep mode |
+| --- | --- | --- |
+| Skill host/orchestrator | Uses model inference to interpret the request, orchestrate the fixed workflow, and present results | Uses host inference for the same purposes |
+| Deterministic assessment engine | No model calls; scripts establish findings, mappings, and policy results | Identical deterministic checks and results |
+| Remediation analysis | Maintained guidance returned by scripts; no dedicated model analysis | Additional Bedrock inference produces contextual suggestions |
+| Target MCP implementation | May itself use inference; discovery alone cannot establish its internals | Same uncertainty; deep mode does not expand discovery permissions |
+
+The host must present the script-produced findings faithfully. Free-form host output must not replace deterministic evidence or introduce authoritative findings. The standalone CLI omits host inference; neither execution path can guarantee that an external target performs no inference. Record host and remediation model usage separately where observable, and identify target-side inference as declared, observed, or unknown.
 
 ## 3. Control model
 
@@ -147,7 +161,7 @@ Generate `findings.json`, `coverage.json`, and a readable report first. Add SARI
 
 Send only selected findings, relevant control text, and necessary redacted excerpts. Retrieve control text locally by reviewed IDs; a vector database is unnecessary for the initial design.
 
-Use an approved inference profile with least-privilege IAM permissions. Record profile, model, prompt version, and inference settings. The model receives no execution tools and cannot fetch additional evidence or act on target instructions.
+Use an approved inference profile with least-privilege IAM permissions. Record profile, model, prompt version, and inference settings. The remediation model receives no execution tools and cannot fetch additional evidence or act on target instructions. The skill host may launch the assessment engine within the configured scope; that orchestration permission does not extend to the remediation model.
 
 Require structured suggestions containing finding ID, proposed fix, evidence IDs, assumptions, and verification steps. Reject malformed output and unknown references. Keep advice visibly separate from deterministic results.
 
@@ -161,7 +175,7 @@ Where appropriate, use [Bedrock private connectivity](https://docs.aws.amazon.co
 4. Add the Bedrock adapter and validate advisory output isolation.
 5. Pilot against known benign and vulnerable fixtures, then representative internal and external MCPs.
 
-Acceptance tests should verify that fast execution makes no inference calls; discovery never becomes tool execution; malformed, hostile, or inaccessible targets yield bounded results; missing evidence remains visible; and deep mode preserves deterministic findings.
+Acceptance tests should verify that the fast assessment engine makes no model calls; host orchestration uses approved inference configuration and preserves script-produced findings; discovery never becomes tool execution; malformed, hostile, or inaccessible targets yield bounded results; missing evidence remains visible; and deep remediation preserves deterministic findings. Target-side inference cannot be ruled out from endpoint discovery alone.
 
 Decisions still needed: corporate catalogue format and sample controls; supported protocol versions and transports; discovery allowlists and authentication arrangements; severity and mandatory-unknown policy; evidence retention and redaction; internal vulnerability dataset; Bedrock profile/model/regions; and reassessment cadence.
 
