@@ -1,0 +1,27 @@
+sequenceDiagram
+    actor Caller
+    participant API as Runtime handler
+    participant DB as Assessment registry
+    participant Agent as Security Agent and controller
+    participant Engine as Deterministic engine
+    participant S3 as Artifact store
+    participant Model as Approved Bedrock profile
+
+    Caller->>API: start_assessment(manifest, idempotency key)
+    API->>API: Verify identity, session binding, scope, budgets
+    API->>DB: Conditionally create assessment and attempt
+    API->>Agent: Register bounded background work
+    API-->>Caller: assessment_id and accepted state
+    Agent->>Model: Scoped orchestration using trusted skill
+    Agent->>Engine: Execute required assessment workflow
+    Engine->>S3: Store evidence, findings, coverage, baseline report
+    Engine->>DB: Checkpoint phases and renew attempt lease
+    opt Deep mode
+        Agent->>Model: Minimized findings and control excerpts (no tools)
+        Agent->>Agent: Validate advisory schema and evidence references
+        Agent->>S3: Store separate remediation and deep report
+    end
+    Agent->>DB: Publish terminal state under current attempt token
+    Caller->>API: get_assessment_report(assessment_id)
+    API->>DB: Verify ownership and published result references
+    API-->>Caller: Structured report or authorised artifact references

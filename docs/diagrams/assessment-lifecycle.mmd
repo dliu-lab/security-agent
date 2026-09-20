@@ -1,0 +1,18 @@
+stateDiagram-v2
+    direction LR
+    [*] --> Accepted
+    Accepted --> Running: work starts
+    Accepted --> Interrupted: start or lease timeout
+    Running --> Completed: workflow finished
+    Running --> Partial: incomplete execution
+    Running --> Failed: unrecoverable error
+    Running --> Interrupted: compute or lease lost
+    Accepted --> CancelRequested: cancel
+    Running --> CancelRequested: cancel
+    CancelRequested --> Cancelled: stopped or lease expired
+    Interrupted --> Running: resume with new attempt
+    Interrupted --> Cancelled: cancel
+    Completed --> [*]
+    Partial --> [*]
+    Failed --> [*]
+    Cancelled --> [*]

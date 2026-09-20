@@ -1,0 +1,36 @@
+flowchart TB
+    Client["Claude Code client skill / application / CI"]
+    API["AgentCore invocation API<br/>Configured authentication"]
+    Client --> API
+
+    subgraph Runtime["AgentCore Runtime: one assessment attempt per session"]
+        Entry["Operation handler<br/>Identity, ownership, scope, admission"]
+        Agent["Security Agent<br/>Bounded orchestration"]
+        subgraph Plugin["Trusted security-assessment plugin"]
+            MCP["mcp-assessment skill"]
+            Skill["skill-assessment skill"]
+        end
+        Engine["Registered tools + deterministic engine<br/>Collection, checks, mappings, report"]
+        Advice["Deep remediation adapter<br/>Minimise input and validate output"]
+        Entry --> Agent
+        Agent --> MCP
+        Agent --> Skill
+        MCP --> Engine
+        Skill --> Engine
+        Engine -->|deep only| Advice
+    end
+
+    API --> Entry
+    Targets["Untrusted target evidence<br/>Approved repositories and MCP endpoints"]
+    subgraph Services["Approved AWS services"]
+        Registry[("DynamoDB<br/>Ownership, state, attempts, leases")]
+        Artifacts[("Private S3 + KMS<br/>Evidence, checkpoints, reports")]
+        Model["Amazon Bedrock<br/>Approved inference profile"]
+    end
+    Entry --> Registry
+    Engine --> Registry
+    Engine --> Artifacts
+    Advice --> Artifacts
+    Engine -->|bounded permitted access| Targets
+    Agent -->|orchestration| Model
+    Advice -->|remediation| Model

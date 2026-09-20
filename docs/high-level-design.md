@@ -43,42 +43,9 @@ Approved open-source dependencies are packaged internally. Rules and vulnerabili
 
 ## 3. System architecture
 
-```mermaid
-flowchart TB
-    Client["Claude Code client skill / application / CI"]
-    API["AgentCore invocation API<br/>Configured authentication"]
-    Client --> API
+![Security Agent architecture with AgentCore Runtime, two scanner skills, the deterministic engine, approved targets, storage, and Bedrock inference](diagrams/system-architecture.png)
 
-    subgraph Runtime["AgentCore Runtime: one assessment attempt per session"]
-        Entry["Operation handler<br/>Identity, ownership, scope, admission"]
-        Agent["Security Agent<br/>Bounded orchestration"]
-        subgraph Plugin["Trusted security-assessment plugin"]
-            MCP["mcp-assessment skill"]
-            Skill["skill-assessment skill"]
-        end
-        Engine["Registered tools + deterministic engine<br/>Collection, checks, mappings, report"]
-        Advice["Deep remediation adapter<br/>Minimise input and validate output"]
-        Entry --> Agent
-        Agent --> MCP
-        Agent --> Skill
-        MCP --> Engine
-        Skill --> Engine
-        Engine -->|deep only| Advice
-    end
-
-    API --> Entry
-    Registry[("DynamoDB<br/>Ownership, state, attempts, leases")]
-    Artifacts[("Private S3 + KMS<br/>Evidence, checkpoints, reports")]
-    Model["Amazon Bedrock<br/>Approved inference profile"]
-    Targets["Untrusted target evidence<br/>Approved repositories and MCP endpoints"]
-    Entry --> Registry
-    Engine --> Registry
-    Engine --> Artifacts
-    Advice --> Artifacts
-    Engine -->|bounded permitted access| Targets
-    Agent -->|orchestration| Model
-    Advice -->|remediation| Model
-```
+[Open full-size diagram](diagrams/system-architecture.png) · [Editable diagram source](diagrams/system-architecture.mmd)
 
 The Runtime box is a compute boundary. Its internal modules share the Runtime identity and network configuration; arrows between them do not imply separate IAM roles. S3 and DynamoDB preserve assessment state independently of the session. Approved release artifacts supply scanner skills, rule packs, mappings, and model configuration.
 
@@ -128,35 +95,9 @@ Keep target repositories outside trusted plugin/skill discovery and never inheri
 
 ### Main execution flow
 
-```mermaid
-sequenceDiagram
-    actor Caller
-    participant API as Runtime handler
-    participant DB as Assessment registry
-    participant Agent as Security Agent and controller
-    participant Engine as Deterministic engine
-    participant S3 as Artifact store
-    participant Model as Approved Bedrock profile
+![Assessment sequence from authenticated submission through deterministic checks, optional deep remediation, and report retrieval](diagrams/assessment-flow.png)
 
-    Caller->>API: start_assessment(manifest, idempotency key)
-    API->>API: Verify identity, session binding, scope, budgets
-    API->>DB: Conditionally create assessment and attempt
-    API->>Agent: Register bounded background work
-    API-->>Caller: assessment_id and accepted state
-    Agent->>Model: Scoped orchestration using trusted skill
-    Agent->>Engine: Execute required assessment workflow
-    Engine->>S3: Store evidence, findings, coverage, baseline report
-    Engine->>DB: Checkpoint phases and renew attempt lease
-    opt Deep mode
-        Agent->>Model: Minimized findings and control excerpts; no tools
-        Agent->>Agent: Validate advisory schema and evidence references
-        Agent->>S3: Store separate remediation and deep report
-    end
-    Agent->>DB: Publish terminal state under current attempt token
-    Caller->>API: get_assessment_report(assessment_id)
-    API->>DB: Verify ownership and published result references
-    API-->>Caller: Structured report or authorised artifact references
-```
+[Open full-size diagram](diagrams/assessment-flow.png) · [Editable diagram source](diagrams/assessment-flow.mmd)
 
 All model requests use server-configured approved profiles and bounded token/call budgets. A model-generated tool request still passes deterministic scope and phase checks. The remediation call is a separate logical context with no execution tools, even when it uses the same approved model as orchestration.
 
@@ -265,27 +206,11 @@ Bedrock requests use a server-selected approved inference profile, including orc
 
 ## 9. Lifecycle, resilience and concurrency
 
-```mermaid
-stateDiagram-v2
-    [*] --> Accepted
-    Accepted --> Running: work starts
-    Accepted --> Interrupted: start or lease timeout
-    Running --> Completed: required workflow finishes
-    Running --> Partial: report available with incomplete execution
-    Running --> Failed: unrecoverable execution failure
-    Running --> Interrupted: lost compute or expired lease
-    Accepted --> CancelRequested: authorised cancellation
-    Running --> CancelRequested: authorised cancellation
-    CancelRequested --> Cancelled: tasks stopped or lease expired
-    Interrupted --> Running: authorised resume, new attempt
-    Interrupted --> Cancelled: authorised cancellation
-    Completed --> [*]
-    Partial --> [*]
-    Failed --> [*]
-    Cancelled --> [*]
-```
+![Assessment lifecycle covering acceptance, execution, completion, partial results, interruption, recovery, and cancellation](diagrams/assessment-lifecycle.png)
 
-Lifecycle state is separate from security outcome: `Completed` can contain failed checks or unknown controls. A deep-mode inference failure leaves deterministic results accessible and marks the advisory stage incomplete, normally producing `Partial`. Each target also records its own phase and outcome.
+[Open full-size diagram](diagrams/assessment-lifecycle.png) · [Editable diagram source](diagrams/assessment-lifecycle.mmd)
+
+Lifecycle state is separate from security outcome: `Completed` can contain failed checks or unknown controls. A deep-mode inference failure leaves deterministic results accessible and marks the advisory stage incomplete, normally producing `Partial`. Each target also records its own phase and outcome. Cancellation and resume require current authorisation.
 
 Persist acceptance before acknowledgement. Register background work and keep health responses responsive. The AgentCore SDK's asynchronous tracking communicates activity so work can continue after the initial response; it is not a durable queue or replay engine. Busy health prevents idle termination, not maximum-lifetime termination or crashes. [AWS asynchronous processing](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html).
 
