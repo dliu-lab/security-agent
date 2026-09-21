@@ -34,6 +34,8 @@ MCP communication itself does not require model inference: a scripted client can
 
 Batch size does not determine runtime count. Start with one bounded assessment batch per Runtime session and configurable internal concurrency. Persist assessment state and reports outside session memory. See [the API and lifecycle design](docs/assessment-design.md#agentcore-runtime-api-and-client-interfaces).
 
+The existing corporate marketplace is the proposed distribution source for the trusted scanner plugin and separate Claude Code client plugin. The v1 deployment proposal includes a reviewed, pinned scanner-plugin release in the Security Agent container image, with explicit skill loading and separate evidence paths. See [marketplace and deployment packaging in the HLD](docs/high-level-design.md#10-deployment-and-operations).
+
 Repository assessments identify the inspected commit or snapshot. When a running endpoint is also assessed, record whether that source corresponds to its deployed version; available source alone does not verify the live deployment. See [evidence availability](docs/assessment-design.md#evidence-availability-and-deployment).
 
 ## Next implementation steps

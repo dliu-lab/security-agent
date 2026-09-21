@@ -7,6 +7,7 @@ The [Security Agent HLD](../high-level-design.md) embeds PNG images so readers d
 | System architecture | [system-architecture.mmd](system-architecture.mmd) | [system-architecture.png](system-architecture.png) |
 | Assessment flow | [assessment-flow.mmd](assessment-flow.mmd) | [assessment-flow.png](assessment-flow.png) |
 | Assessment lifecycle | [assessment-lifecycle.mmd](assessment-lifecycle.mmd) | [assessment-lifecycle.png](assessment-lifecycle.png) |
+| Marketplace and deployment distribution | [deployment-distribution.mmd](deployment-distribution.mmd) | [deployment-distribution.png](deployment-distribution.png) |
 
 When changing a diagram, update its source, render a replacement PNG with an approved local Mermaid renderer, visually review labels and connectors, and commit both files together. Open the image at full size to inspect small labels.
 

@@ -101,11 +101,11 @@ The Claude Code client skill collects scope and mode, invokes a packaged API hel
 
 ### Skill packaging and agent integration
 
-Use one canonical `security-assessment` plugin containing `mcp-assessment` and `skill-assessment`. Each skill supplies its own procedure and references and invokes the common engine through registered tools. Load approved immutable versions from the deployment artifact. Maintain a separate `assessment-client` skill for Claude Code that submits to the hosted service; the hosted plugin excludes this client helper to prevent recursive API submission.
+Use one canonical `security-assessment` plugin containing `mcp-assessment` and `skill-assessment`, distributed through the existing corporate marketplace. Each skill supplies its own procedure and references and invokes the common engine through registered tools. The proposed v1 build includes an approved, pinned plugin release in the application image. Maintain a separate `assessment-client` skill in its own marketplace plugin for Claude Code; the hosted loader excludes this client helper to prevent recursive API submission. The [HLD packaging and release flow](high-level-design.md#10-deployment-and-operations) defines source ownership, compatibility checks, pinned release identities and the optional future startup-fetch alternative.
 
 A plugin groups versioned skills and supporting resources; it is not another deployed agent or container. The runtime framework must explicitly load the two trusted skills. Strands is a proposed option: its `AgentSkills` integration loads skill instructions, while the application supplies resource-access tools. Alternatively, the Claude Agent SDK can load a Claude Code plugin explicitly. A Claude `.claude-plugin/plugin.json` manifest is not automatically interpreted by AgentCore or by Strands. Choose and pin the framework adapter during implementation. See [Strands skills](https://strandsagents.com/docs/user-guide/concepts/plugins/skills/) and [Claude Agent SDK plugins](https://code.claude.com/docs/en/agent-sdk/plugins).
 
-Keep the Claude Code terminal installation focused on the API client skill; do not automatically expose the hosted scanner's local execution skills there. Both distributions can live in one repository and share schema versions. If a Claude plugin format is used for the canonical package, its manifest and namespacing serve compatible hosts; the Strands adapter explicitly registers only its two skill directories. See [Claude Code skills](https://code.claude.com/docs/en/skills), [plugin packaging](https://code.claude.com/docs/en/plugins), and the [Agent Skills format](https://agentskills.io/specification).
+Keep the Claude Code terminal installation focused on the API client skill; do not automatically expose the hosted scanner's local execution skills there. The marketplace-backed package sources remain canonical while the Security Agent repository owns the executable engine and deployment integration. Share versioned API/tool contracts and avoid a second editable copy of scanner skills in the application repository. If a Claude plugin format is used for the canonical package, its manifest and namespacing serve compatible hosts; the Strands adapter explicitly registers only its two skill directories. See [Claude Code skills](https://code.claude.com/docs/en/skills), [plugin packaging](https://code.claude.com/docs/en/plugins), and the [Agent Skills format](https://agentskills.io/specification).
 
 Keep skills concise; load reviewed control excerpts and detailed references as needed. Record skill and instruction versions with each assessment. Separate trusted scanner skills from target evidence paths. Do not discover or activate skills, plugins, hooks, `AGENTS.md`, or `CLAUDE.md` from an assessed repository. Referenced target scripts are evidence and must not execute. Plugin hooks and unrestricted shell tools are not required for the scanner.
 
@@ -178,62 +178,32 @@ Pin external reference versions or commits. OWASP’s MCP project is evolving, s
 
 ## 4. Proposed package structure
 
+The [HLD application and plugin layout](high-level-design.md#4-application-plugin-and-skill-packaging) defines the deployment paths and engine modules. Keep these sources independently maintained:
+
 ```text
-security-assessment/
-├── plugins/
-│   └── security-assessment/
-│       ├── .claude-plugin/plugin.json  # If using Claude-compatible packaging
-│       └── skills/
-│           ├── mcp-assessment/
-│           │   ├── SKILL.md
-│           │   └── references/
-│           └── skill-assessment/
-│               ├── SKILL.md
-│               └── references/
-├── clients/claude-code/
-│   └── skills/assessment-client/
-│       ├── SKILL.md
-│       └── scripts/                  # Hosted API helper only
-├── src/security_assessment/
-│   ├── agent/                        # Explicit trusted skill loading
-│   ├── runtime/                      # Invocation, auth, lifecycle
-│   ├── tools/                        # Registered engine operations
-│   ├── contracts/
-│   ├── collectors/
-│   ├── checks/
-│   │   ├── mcp/
-│   │   ├── skill/
-│   │   └── shared/
-│   ├── policy/
-│   ├── reporting/
-│   ├── remediation/
-│   ├── storage/
-│   ├── clients/
-│   └── cli/                          # Development and API client
-├── rules/
-│   ├── mcp/
-│   ├── skill/
-│   └── shared/
-├── references/
-│   ├── corporate-controls.yaml
-│   ├── control-mappings.yaml
-│   ├── source-versions.yaml
-│   ├── assessment-boundaries.md
-│   └── deep-mode.md
-├── schemas/
-│   ├── assessment-input.schema.json
-│   ├── finding.schema.json
-│   └── remediation.schema.json
-├── assets/report-template.md
-├── deploy/
-│   ├── agentcore/
-│   └── infrastructure/
-└── tests/
-    ├── fixtures/
-    └── expected-results/
+Security Agent application repository
+├── src/security_agent/             # Runtime, agent, engine and adapters
+├── deployment/                    # Container, IaC and release lock data
+├── control-mappings/              # Schemas and sanitised examples
+├── schemas/                       # Assessment, finding, remediation contracts
+├── assets/                        # Report templates
+└── tests/                         # Fixtures and expected results
+
+Corporate marketplace backing package sources
+└── plugins/
+    ├── security-assessment/
+    │   ├── .claude-plugin/plugin.json   # If Claude-compatible
+    │   └── skills/
+    │       ├── mcp-assessment/
+    │       └── skill-assessment/
+    └── assessment-client/
+        └── skills/assessment-client/  # SKILL.md and hosted API helper
+
+Approved private configuration storage
+└── versioned catalogue, mappings, rule metadata and policy artifacts
 ```
 
-Keep scanner `SKILL.md` files focused on the target-specific procedure and references; keep the client skill focused on API invocation and report retrieval. Store control text and executable checks separately and reuse their implementations across both scanners. Enforce permissions and mode selection in code. This structure is a proposal, not a list of existing files.
+The image build imports the selected pinned scanner bundle from its marketplace source; that build output is not a second editable skill source. Keep scanner `SKILL.md` files focused on target-specific procedures and references, and the client skill focused on API invocation and report retrieval. Store control text and executable checks separately and reuse their implementations across both scanners. Enforce permissions and mode selection in code. This structure is a proposal, not a list of existing files; the marketplace's concrete format and locations remain to be confirmed.
 
 ## 5. Assessment coverage
 

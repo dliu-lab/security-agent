@@ -1,0 +1,22 @@
+flowchart TB
+    App["Security Agent source<br/>Engine, agent and invocation API"]
+    Scanner["Corporate marketplace<br/>Selected security-assessment plugin<br/>Pinned and verified release"]
+    Rules["Approved rule pack<br/>Corporate mappings and references"]
+
+    App --> CI
+    Scanner --> CI
+    Rules --> CI
+    CI["CI verification and composition<br/>Verify inputs and test compatibility<br/>Exclude client helper and auto-start hooks"]
+    CI --> Image["Immutable release image in ECR<br/>Application, scanner plugin and approved rules"]
+    Image --> Release["Release record<br/>Image digest and engine, plugin, rule versions<br/>Compatibility verified before promotion"]
+
+    subgraph Runtime["AgentCore Runtime"]
+        Service["Security Agent<br/>Authenticated invocation handler and engine"]
+        Loader["Explicit trusted skill loader<br/>mcp-assessment and skill-assessment"]
+        Service --> Loader
+    end
+    Release -->|Deploy pinned image| Service
+
+    Client["Marketplace client plugin<br/>Separate distribution"]
+    Client --> Claude["Claude Code<br/>Terminal invocation skill"]
+    Claude -->|Call hosted API| Service
