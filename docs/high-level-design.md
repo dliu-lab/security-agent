@@ -2,7 +2,7 @@
 
 **Status:** proposed architecture for review; no agent, scanner, or deployment has been implemented.
 
-**Version:** 0.6 — updated 21 September 2026
+**Version:** 0.7 — updated 21 September 2026
 
 **Audience:** security engineering, application engineering, cloud platform, and architecture reviewers.
 
@@ -27,6 +27,7 @@ The organisation already has a central plugin marketplace for skills and MCP pac
 | --- | --- |
 | Product name: Security Agent | Confirmed |
 | Hosted service: AgentCore Runtime; API exposure through `InvokeAgentRuntime` | Confirmed |
+| Hosted agent framework: Strands Agents SDK | Confirmed |
 | Direct local scanner-plugin execution without AgentCore invocation | Confirmed direction |
 | One API and assessment lifecycle for MCP, skill, and mixed batches | Confirmed direction |
 | One trusted scanner plugin with MCP and skill assessment skills | Confirmed direction |
@@ -39,7 +40,7 @@ The organisation already has a central plugin marketplace for skills and MCP pac
 | Hosted state database: Amazon Aurora PostgreSQL | Confirmed direction |
 | Hosted SQL access through RDS Data API over HTTPS | Selected design for API-based database access |
 | Python engine, AgentCore SDK, S3 artifacts | Proposed implementation |
-| Agent framework, authentication integration, AWS regions and service objectives | Open; recommendations and gates appear below |
+| Authentication integration, AWS regions and service objectives | Open; recommendations and gates appear below |
 
 The earlier EKS hosting proposal is superseded for the hosted service. Direct local execution is an additional supported delivery path. One hosted agent application may serve many isolated sessions; it does not mean one shared process or conversation for all users.
 
@@ -133,7 +134,7 @@ Proposed application layout; scanner plugin source lives in its separate reposit
 security-agent/
 ├── src/security_agent/
 │   ├── runtime/                 # API, identity, assessment lifecycle
-│   ├── agent/                   # Framework adapter and registered tools
+│   ├── agent/                   # Strands adapter and registered tools
 │   ├── cli/                     # Local adapter invoking the same engine
 │   ├── engine/
 │   │   ├── pipeline.py          # Required phases, budgets, scheduling
@@ -195,11 +196,11 @@ The proposed hosted image contains separate application and trusted-plugin paths
 
 Package each selected skill with its reviewed references and required support files. Configure trusted-plugin files as read-only to the runtime user and keep evidence paths outside all plugin/skill discovery roots. Separate folders support controlled loading and maintenance; they do not create separate IAM, process, or network security boundaries. Loaded scanner skills intentionally guide the agent. Application code enforces what their tools can do.
 
-The plugin is a release package, not another agent or container. Select one hosted agent-framework adapter for v1. Strands with its `AgentSkills` integration is a candidate; a Claude Agent SDK adapter is another option when Claude plugin compatibility is required. Avoid maintaining both hosted frameworks initially. The local assistant's plugin/CLI integration remains a separate supported interface and does not require the hosted framework.
+The plugin is a release package, not another agent or container. Use Strands Agents SDK as the hosted agent framework, with the AgentCore SDK providing Runtime serving and lifecycle integration. Pin and validate the compatible SDK versions during implementation. The local assistant's plugin/CLI integration remains a separate supported interface and does not require Strands or AgentCore.
 
-The framework must explicitly load the two approved skill directories. Strands loads skill instructions and resource listings while the application provides resource-access tools; it does not interpret a Claude plugin manifest as a deployment. Use registered scanner tools rather than adopting unrestricted shell access from examples. Skill `allowed-tools` metadata is not relied on as an enforcement boundary. [Strands skills](https://strandsagents.com/docs/user-guide/concepts/plugins/skills/).
+Configure Strands `AgentSkills` to explicitly load the two approved skill directories. It loads skill instructions and resource listings while the application provides bounded resource-access and registered scanner tools; it does not interpret a Claude plugin manifest as a deployment. Skill `allowed-tools` metadata is not relied on as an enforcement boundary. [Strands skills](https://strandsagents.com/docs/user-guide/concepts/plugins/skills/).
 
-The Claude Agent SDK can load a plugin from an explicitly configured local directory after the deployment pipeline downloads it. Such a plugin can also contain hooks, subagents and MCP definitions. For the hosted scanner, validate a skills-only component allowlist and reject unapproved executable components, hooks, automatic MCP connections, and client helpers. A different folder does not suppress those components when a framework loads the whole plugin. Marketplace distribution and loading are implemented by the release pipeline and selected framework adapter; the design does not assume a native AgentCore marketplace-attachment feature. [Claude Agent SDK plugins](https://code.claude.com/docs/en/agent-sdk/plugins).
+For the hosted scanner, validate a skills-only component allowlist and reject unapproved executable components, hooks, automatic MCP connections and client helpers. The release pipeline resolves the pinned marketplace bundle, and the Strands adapter registers only the approved scanner skill paths. A separate folder alone is not an enforcement boundary. The design does not assume a native AgentCore marketplace-attachment feature or hosted loading of the complete Claude plugin manifest.
 
 Keep target repositories outside trusted plugin/skill discovery and never inherit their `SKILL.md`, `AGENTS.md`, `CLAUDE.md`, hooks, or MCP configuration as agent instructions. These files are evidence. If offered, distribute the hosted-API client as a separate marketplace plugin and exclude it from the hosted image's trusted skills, preventing recursive submission to Security Agent itself.
 
@@ -457,7 +458,7 @@ For hosted workloads, if measured resource use or deadlines require scale-out, a
 
 | Layer | Proposed technology |
 | --- | --- |
-| Runtime application | Python, Pydantic contracts, AgentCore SDK; one pinned skill-capable agent framework |
+| Runtime application | Python, Pydantic contracts, AgentCore SDK and Strands Agents SDK with explicit trusted skill loading |
 | Direct local execution | Same versioned engine as an installed Python package/CLI, with a compatible assistant adapter |
 | Scanner execution | Registered Python check modules and reviewed offline subprocess adapters where useful |
 | MCP collection | Official MCP SDK adapter selected for supported protocol revisions |
@@ -539,7 +540,7 @@ For optional GHA delivery, test opt-out makes no repository writes; fast/endpoin
 | Decision | Required input |
 | --- | --- |
 | Corporate policy | Catalogue sample/format, control mappings, severity, mandatory unknowns, exceptions |
-| Agent implementation | Framework/loader selection and approved dependency/runtime versions |
+| Agent implementation | Approved Strands/AgentCore SDK versions and validated trusted-skill loader configuration |
 | Marketplace integration | Marketplace format/location, package source and approval process, immutable identity/signature scheme, engine compatibility contract and optional API-client publication |
 | Local delivery | Supported assistants/OS/architectures, engine package installation, approved local inference/configuration, host permission settings, artifact retention and recovery support |
 | Identity | JWT or IAM integration, machine callers, session binding and verified ownership propagation |

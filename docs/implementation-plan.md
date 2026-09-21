@@ -2,7 +2,9 @@
 
 **Status:** proposed work breakdown; no scanner, plugin, API, infrastructure or workflow has been implemented.
 
-**Design baseline:** [HLD v0.6](high-level-design.md) and [assessment design](assessment-design.md), including the four intake paths and optional GHA remediation PR. The HLD remains the architecture authority; this document defines delivery order and acceptance gates.
+**Design baseline:** [HLD v0.7](high-level-design.md) and [assessment design](assessment-design.md), including the four intake paths and optional GHA remediation PR. The HLD remains the architecture authority; this document defines delivery order and acceptance gates.
+
+**Selected hosted framework:** Strands Agents SDK, with AgentCore SDK Runtime integration. Load only the two trusted scanner skills through an explicit Strands `AgentSkills` configuration. Framework selection is settled; compatible dependency versions and loader behavior still require validation. The shared engine and local CLI remain independent of Strands.
 
 Build the shared deterministic engine first and prove it through a local CLI. Add collectors and the trusted scanner plugin around that contract, then deploy the same engine through AgentCore. Deliver GHA reporting before enabling proposed patches and draft PRs. Tests accompany each component; the final pilot validates their integration and operating limits.
 
@@ -35,7 +37,7 @@ Keep executable code, CLI, API, infrastructure and GHA integration in this appli
 
 Create the proposed Python package structure from the HLD, development dependency lock, build configuration and CI for formatting, linting, type checks, tests and package builds. Add dependency and release compatibility metadata. Use the same engine source for the local package and hosted image.
 
-Record short architecture decisions for supported source languages/manifest patterns, skill dialects and local host versions. Run a bounded feasibility exercise to choose one hosted framework/skill loader and verify the intended AWS region, Bedrock profile, Runtime identity/network path and Aurora Data API configuration. Select the corporate JWT machine integration or the IAM alternative; do not assume AWS credentials authenticate to a JWT-configured Runtime. Select the organisation's IaC and internal artifact-distribution tooling without adding a second deployment platform.
+Record short architecture decisions for supported source languages/manifest patterns, skill dialects and local host versions. Run a bounded feasibility exercise to validate the pinned Strands/AgentCore SDK combination and trusted-skill loader, and verify the intended AWS region, Bedrock profile, Runtime identity/network path and Aurora Data API configuration. Select the corporate JWT machine integration or the IAM alternative; do not assume AWS credentials authenticate to a JWT-configured Runtime. Select the organisation's IaC and internal artifact-distribution tooling without adding a second deployment platform.
 
 **Done when:** package CI builds an empty installable application; source ownership and compatibility strategy are documented; feasibility results identify which deployment inputs are available and which remain blockers. No cloud capability is declared supported solely because a mock passed.
 
@@ -101,7 +103,7 @@ Implement a framework-independent remediation adapter using the approved Bedrock
 
 In the separate plugin repository, author `security-assessment` with only the trusted `mcp-assessment` and `skill-assessment` workflows and reviewed support resources. Both invoke the same high-level engine contract. Publish a pinned marketplace release and a compatible local engine package; record their independent revisions/digests. Keep the optional hosted-client plugin separate and defer it until the API exists.
 
-Implement the local assistant adapter and selected hosted framework loader against that same bundle. Validate that target content cannot register skills/tools or alter the manifest, checks, severity or mappings. Configure approved host Bedrock inference for both modes. A plain CLI fast scan remains independent of host inference.
+Implement the local assistant adapter and hosted Strands `AgentSkills` loader against that same bundle. Validate that target content cannot register skills/tools or alter the manifest, checks, severity or mappings. Configure approved host Bedrock inference for both modes. A plain CLI fast scan remains independent of host inference.
 
 **Done when:** local plugin fast/deep scans return the expected deterministic baseline; denied Bedrock access, malformed advice and injection fixtures cannot overwrite it, and advice failures produce the required incomplete/partial state. Setup detects incompatible plugin/engine versions and does not silently invoke AgentCore. Explicit loader inventory contains only the two approved scanner skills. Source support can ship internally first; advertise endpoint/installed support only after steps 5 and 6 pass.
 
@@ -119,7 +121,7 @@ Use a migration identity separate from the runtime database identity. Provision 
 
 ### Step 9 — Deploy the agent and typed API on AgentCore
 
-Compose the shared engine, selected framework adapter, pinned two-skill bundle and rule/configuration identities into an immutable hosted image. Expose the seven application operations through the native invocation contract. Integrate the shared authentication/verified-ownership adapter, target entitlement, session binding, admission and durable acceptance before loading agent context or invoking models. Status/report/cancel operations use structured code without model calls.
+Compose the shared engine, Strands adapter, pinned two-skill bundle and rule/configuration identities into an immutable hosted image. Expose the seven application operations through the native invocation contract using the AgentCore SDK. Integrate the shared authentication/verified-ownership adapter, target entitlement, session binding, admission and durable acceptance before loading agent context or invoking models. Status/report/cancel operations use structured code without model calls.
 
 Background work uses a bounded durable authorization record and service identity, never a persisted caller JWT. Check grant expiry/revocation at phase boundaries; interrupt expired work until reauthorized. Resume and report access verify current caller rights independently of session or assessment IDs.
 
@@ -179,7 +181,7 @@ These are delivery checkpoints, not independent products. A prototype milestone 
 | Supported MCP revisions/transports, target credentials and allowlists | Real endpoint validation in step 5 | Captured response fixtures and permission enforcement |
 | Supported Claude Code versions/OS and clean scanner profile | Local installation/plugin acceptance in steps 6–7 | Host-reader interfaces and synthetic records |
 | Scanner-plugin repository location, marketplace publication and internal engine distribution | Reproducible local/hosted packaging in step 7 | Engine implementation and plugin source planning |
-| One hosted framework/loader and approved Bedrock profile/model/regions | Real inference in step 7 and image integration in step 9 | Tool contracts and simulated adapter failures |
+| Approved Strands/AgentCore SDK versions, loader configuration and Bedrock profile/model/regions | Real inference in step 7 and image integration in step 9 | Tool contracts and simulated adapter failures |
 | AWS account/region, Aurora configuration, IaC, private connectivity, identity and retention | Real storage/invocation gates in steps 8–9 | Migrations, lifecycle logic, mocks and local tests |
 | GHA machine authentication, trusted workflow ref and approved repository/base refs | Workflow integration in step 10 | Typed client/helper and retry tests |
 | Allowed patch classes, GitHub write credentials and downstream CI policy | Enabling PR delivery in step 11 | Patch validators and synthetic proposal fixtures |
