@@ -23,7 +23,7 @@ flowchart TB
     API --> Entry
     Targets["Untrusted target evidence<br/>Approved repositories and MCP endpoints"]
     subgraph Services["Approved AWS services"]
-        Registry[("DynamoDB<br/>Ownership, state, attempts, leases")]
+        Registry[("Aurora PostgreSQL<br/>Via RDS Data API over HTTPS<br/>State, findings, attempts, leases")]
         Artifacts[("Private S3 + KMS<br/>Evidence, checkpoints, reports")]
         Model["Amazon Bedrock<br/>Approved inference profile"]
     end

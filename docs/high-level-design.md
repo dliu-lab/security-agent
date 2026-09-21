@@ -2,7 +2,7 @@
 
 **Status:** proposed architecture for review; no agent, scanner, or deployment has been implemented.
 
-**Version:** 0.3 — updated 21 September 2026
+**Version:** 0.4 — updated 21 September 2026
 
 **Audience:** security engineering, application engineering, cloud platform, and architecture reviewers.
 
@@ -32,7 +32,9 @@ The organisation already has a central plugin marketplace for skills and MCP pac
 | Pinned scanner plugin plus compatible local engine package, or hosted container image | Proposed v1 delivery model |
 | Corporate catalogue is the policy authority | Confirmed |
 | Approved Bedrock inference; no external scanning SaaS or public model APIs | Confirmed |
-| Python engine, AgentCore SDK, S3 artifacts, DynamoDB registry | Proposed implementation |
+| Hosted state database: Amazon Aurora PostgreSQL | Confirmed direction |
+| Hosted SQL access through RDS Data API over HTTPS | Selected design for API-based database access |
+| Python engine, AgentCore SDK, S3 artifacts | Proposed implementation |
 | Agent framework, authentication integration, AWS regions and service objectives | Open; recommendations and gates appear below |
 
 The earlier EKS hosting proposal is superseded for the hosted service. Direct local execution is an additional supported delivery path. One hosted agent application may serve many isolated sessions; it does not mean one shared process or conversation for all users.
@@ -55,7 +57,7 @@ This diagram shows the hosted backend. The local backend uses the same scanner p
 
 [Open full-size diagram](diagrams/system-architecture.png) · [Editable diagram source](diagrams/system-architecture.mmd)
 
-The Runtime box is a compute boundary. Its internal modules share the Runtime identity and network configuration; arrows between them do not imply separate IAM roles. S3 and DynamoDB preserve assessment state independently of the session. Approved release artifacts supply scanner skills, rule packs, mappings, and model configuration.
+The Runtime box is a compute boundary. Its internal modules share the Runtime identity and network configuration; arrows between them do not imply separate IAM roles. Aurora PostgreSQL preserves assessment state independently of the session; S3 preserves evidence and report artifacts. The hosted application executes SQL through RDS Data API over HTTPS, using an approved private endpoint for the selected VPC deployment. Approved release artifacts supply scanner skills, rule packs, mappings, and model configuration.
 
 The native API invokes application code; it does not automatically create REST resources such as `/assessments`. AgentCore's HTTP application contract provides `/invocations` and `/ping`. The SDK supplies the serving integration. [AWS HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html).
 
@@ -125,11 +127,11 @@ Backend selection (`local` or `hosted`) is independent of analysis mode (`fast` 
 | Scanner skills | Canonical marketplace scanner plugin installed locally | Pinned release of that same plugin in the image |
 | Engine invocation | Approved CLI or local tool adapter for the installed engine | Registered application tool calling the engine |
 | Evidence | Approved local snapshot or bounded permitted retrieval/discovery | Authorised artifact references or permitted retrieval/discovery |
-| Records and reports | Access-controlled local run directory by default | DynamoDB registry and private S3 artifacts |
+| Records and reports | Access-controlled local run directory by default | Aurora PostgreSQL registry via RDS Data API, and private S3 artifacts |
 | Model inference | Approved assistant configuration; approved Bedrock adapter for deep remediation | Approved Bedrock orchestration and deep remediation |
 | AgentCore invocation | None | Required to submit to the hosted service |
 
-A plugin containing only instructions is insufficient when its workflow requires engine tools. Distribute a pinned engine package with its supported CLI and dependencies through an approved internal package source, and validate plugin/tool-contract compatibility before a scan. A Python package with a CLI entry point is the proposed local artifact; installation format and supported OS/architectures remain to be selected. No AgentCore daemon, local HTTP server, S3 bucket or DynamoDB table is required for the direct local path.
+A plugin containing only instructions is insufficient when its workflow requires engine tools. Distribute a pinned engine package with its supported CLI and dependencies through an approved internal package source, and validate plugin/tool-contract compatibility before a scan. A Python package with a CLI entry point is the proposed local artifact; installation format and supported OS/architectures remain to be selected. No AgentCore daemon, local HTTP server, S3 bucket or Aurora database is required for the direct local path.
 
 Maintain one workflow contract and common engine code. The local adapter converts validated CLI/tool arguments into the same assessment context used by hosted registered tools; it invokes the installed scanner executable, never a command supplied by the target repository. Required checks, mode gates, scope limits and result validation remain in the engine. Missing dependencies or unsupported capabilities produce explicit setup/coverage errors rather than silent fallback to the hosted API or model-only assessment.
 
@@ -267,7 +269,23 @@ Duplicate requests from the same owner with the same key and input digest return
 | Coverage | Applicable controls/checks with `pass`, `fail`, `unknown`, `not_applicable`, `error`, or `skipped` and reasons |
 | Remediation | Finding/evidence IDs, suggestion, assumptions, verification steps, model/profile/prompt metadata |
 
-For hosted assessments, store registry records in DynamoDB and encrypted artifacts in private S3. Direct local execution writes records, captured evidence/checkpoints and reports to an approved access-controlled local run directory; define retention and encryption according to workstation policy. Local reports are not automatically uploaded or added to the hosted registry. A future explicit import would need its own ingestion and ownership checks. Separate raw evidence from ordinary report access and avoid embedding credentials or unnecessary source. Define retention, deletion, encryption-key access and backup requirements per backend; database TTL alone is not a complete hosted artifact-deletion policy.
+For hosted assessments, use Amazon Aurora PostgreSQL for assessment, attempt, target, finding, coverage and artifact-reference records. Use relational keys and link tables for finding-to-target, evidence and versioned control relationships, with indexes for authorised assessment lookup, owner/time listings and required finding/control queries. Use stable unique result/finding keys within each assessment so retried publication does not duplicate rows. Store immutable evidence, checkpoint payloads and generated reports in private encrypted S3; retain their object references and hashes in PostgreSQL. Keep advisory text separate from authoritative findings, and retain the pinned catalogue/mapping identity rather than treating the database as a replacement policy source.
+
+Direct local execution writes records, captured evidence/checkpoints and reports to an approved access-controlled local run directory; define retention and encryption according to workstation policy. Local reports are not automatically uploaded or added to the hosted registry. A future explicit import would need its own ingestion and ownership checks. Separate raw evidence from ordinary report access and avoid embedding credentials or unnecessary source. Define retention, deletion, encryption-key access and backup requirements per backend. A scheduled retention process must coordinate database records, S3 object versions and backup retention; deleting a row does not delete an artifact.
+
+### Aurora PostgreSQL and Data API persistence contract
+
+The hosted storage adapter uses the AWS SDK `rds-data` client to execute parameterised SQL through RDS Data API. Enable Data API on a supported Aurora PostgreSQL cluster; confirm region, engine version and compute configuration before deployment. Cluster ARN, secret ARN and database name come from trusted deployment configuration. The application does not maintain PostgreSQL connections or require RDS Proxy for this path. The Security Agent API remains the client interface; clients do not receive direct database privileges. [Aurora Data API](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.html).
+
+Commit acceptance and the initial attempt in one short transaction before acknowledging submission. Enforce a unique, non-null `(owner_id, idempotency_key)` constraint, where `owner_id` represents the verified tenant/principal scope. Store the canonical input digest with that key: a duplicate returns the existing assessment only when the digest matches; conflicting reuse is rejected. Enforce session-binding uniqueness in the same acceptance/resume path. Authorise every read and write using the verified owner scope.
+
+Use explicit `BeginTransaction`, sequential parameterised statements carrying the returned transaction ID, and `CommitTransaction` or `RollbackTransaction` for multi-statement changes. Calls without a transaction ID autocommit. Data API rolls back transactions after three minutes without a call using the transaction ID, so transactions must finish promptly rather than spanning assessment work. [Data API transactions](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.calling.python.html).
+
+Use short row-locked transactions or version-checked updates for attempt acquisition, renewal, cancellation and publication. Persist the current attempt, a monotonically increasing fencing token, lease expiry and record version; use database time to evaluate expiry. Check the affected-row count and treat a failed guard as lost ownership or a state conflict. Do not keep a transaction or row lock open during scanning, target discovery, S3 transfers or model inference. [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html), [row locking](https://www.postgresql.org/docs/current/explicit-locking.html).
+
+PostgreSQL and S3 do not share an atomic transaction. Upload immutable artifacts under an attempt-specific prefix first, then publish their verified references and the corresponding finding/coverage records in a guarded database transaction. Failed or stale attempts may leave unpublished artifacts for retention cleanup; only committed references identify the canonical report. Database or Data API unavailability prevents acknowledgement or publication of durable success. Retry with the original idempotency key or attempt identity after an uncertain commit, and verify stored state before repeating a transition.
+
+Bound request sizes, result pages and transaction batches; keep large source/report payloads in S3. Data API queries, including reads, use the cluster writer, so status polling and reporting share its capacity with scan updates. Validate current response limits and supported data types, and use keyset pagination for large listings. Retry throttling and transient errors with bounded backoff without assuming that a timed-out write failed. [Data API limitations](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.limitations.html).
 
 Corporate controls determine applicability and policy decisions. Maintain reviewed, versioned many-to-many mappings from checks to controls and relevant external categories. MCP guidance and OWASP MCP categories supplement MCP coverage; skill findings use applicable agentic/software-security categories. Missing mappings and mandatory unknowns remain explicit. No model creates authoritative corporate control IDs.
 
@@ -282,6 +300,7 @@ Capture the repository snapshot, scanner release/image, plugin/skill versions, r
 | Agent to tools | Registered operations only; fixed phase/mode gates, resource bounds and target-specific permissions in code |
 | Trusted scanner to target evidence | Explicit trusted loader paths; target packages remain inert and cannot register tools, skills or hooks |
 | Runtime to AWS/data stores | Least-privilege execution role, scoped storage/secret operations, encryption and audit |
+| Runtime to Aurora through Data API | IAM-scoped HTTPS requests, approved cluster/secret, private endpoint, least-privilege database role and owner-scoped queries |
 | Runtime to targets | Explicit destinations/operations, TLS, redirect/DNS validation, bounded pagination and responses |
 | Evidence to model | Selected redacted content, relevant control excerpts, bounded context; raw content is untrusted |
 | Model to findings | Schema/reference validation; generated text cannot overwrite deterministic findings or policy |
@@ -316,11 +335,15 @@ Collectors, parser subprocesses, orchestration and remediation inside one sessio
 
 Configure Runtime connectivity to approved private resources and AWS endpoints. Inbound private API connectivity and outbound access to internal targets are separate network decisions. External discovery uses controlled egress; reject unintended internal/link-local destinations and revalidate redirects and DNS results. VPC attachment is not a hostname allowlist. [AWS VPC connectivity](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html).
 
+Keep Aurora in private database subnets with encryption at rest. The Runtime role needs only the required `rds-data` operations on the approved cluster and access to the specific Secrets Manager secret, plus applicable KMS permissions. Data API uses the secret's database credentials; this is separate from the caller's Security Agent API identity. Give that database user only required data privileges and use a separate deployment identity/secret for schema migrations. Never expose arbitrary SQL or cluster/secret selection as an agent tool, and keep credentials outside plugin content and model context. [Data API authorisation](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.access.html).
+
+For the selected private network path, configure an `rds-data` interface VPC endpoint with private DNS, restricted endpoint policy and HTTPS access from the Runtime security group. Data API does not require opening PostgreSQL port access from Runtime to Aurora. Direct database access, if needed for deployment or administration, has a separate restricted network path. Configure other AWS service endpoints and approved egress for Bedrock, S3, Secrets Manager and permitted targets. [Data API PrivateLink](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.vpc-endpoint.html).
+
 Bedrock requests use approved inference configuration selected by the server or managed local host, including orchestration. The local deep adapter needs authorised AWS credentials for its approved profile; a caller's local access does not grant hosted service permissions. Validate region routing, logging and data-retention settings against corporate requirements. The profile is used in the model invocation configuration; hosting in AgentCore does not automatically configure it. [Bedrock inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html).
 
 ## 9. Lifecycle, resilience and concurrency
 
-The lifecycle diagram and Runtime lease/recovery mechanics below describe hosted assessments. Local assessments use the same outcome vocabulary with backend-specific local records, checkpoints and cancellation; they do not create Runtime sessions or use DynamoDB leases.
+The lifecycle diagram and Runtime lease/recovery mechanics below describe hosted assessments. Local assessments use the same outcome vocabulary with backend-specific local records, checkpoints and cancellation; they do not create Runtime sessions or use PostgreSQL attempt leases.
 
 ![Assessment lifecycle covering acceptance, execution, completion, partial results, interruption, recovery, and cancellation](diagrams/assessment-lifecycle.png)
 
@@ -330,7 +353,7 @@ Lifecycle state is separate from security outcome: `Completed` can contain faile
 
 Persist acceptance before acknowledgement. Register background work and keep health responses responsive. The AgentCore SDK's asynchronous tracking communicates activity so work can continue after the initial response; it is not a durable queue or replay engine. Busy health prevents idle termination, not maximum-lifetime termination or crashes. [AWS asynchronous processing](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html).
 
-Checkpoint at phase/target boundaries and renew a conditional attempt lease. Only the current fencing token can publish canonical result references; stale attempts may leave orphan artifacts for cleanup but cannot replace published state. Cancellation and completion compete through conditional state transitions so a late result cannot overwrite an accepted cancellation. Timeouts and subprocess termination bound cancellation latency, although an external inference request may already be in flight.
+Checkpoint at phase/target boundaries and renew the PostgreSQL attempt lease through guarded updates. Publication requires the current attempt and fencing token, an unexpired lease and an allowed lifecycle state. Resume atomically advances the attempt/token so stale workers cannot replace published state. Cancellation and completion compete in short transactions that recheck the current state; a late result cannot overwrite an accepted cancellation. Failed lease renewal stops further phase dispatch until ownership is revalidated. Timeouts and subprocess termination bound cancellation latency, although an external inference request may already be in flight.
 
 The hosted v1 uses explicit recovery: status evaluation detects expired leases or accepted-but-not-started work, reports interruption, and permits authorised resume. Reauthorise current access and verify checkpoints before replay. Retries may repeat discovery or inference; exactly-once external effects are not promised. A scheduled reconciler may later automate recovery for hosted assessments within AgentCore.
 
@@ -359,11 +382,20 @@ For hosted workloads, if measured resource use or deadlines require scale-out, a
 | Scanner execution | Registered Python check modules and reviewed offline subprocess adapters where useful |
 | MCP collection | Official MCP SDK adapter selected for supported protocol revisions |
 | Model access | Approved Bedrock inference profile through the model adapter |
-| Durable state | Hosted DynamoDB registry; local run records/checkpoints for direct execution |
+| Durable state | Hosted Amazon Aurora PostgreSQL; local run records/checkpoints for direct execution |
+| Database access | RDS Data API through the AWS SDK over HTTPS, with bounded request concurrency and explicit transactions |
 | Artifacts | Hosted private S3 with KMS; approved access-controlled local artifacts for direct execution |
 | Secrets | Approved AWS secret storage/identity integration, using references rather than embedded credentials |
 | Release | Reviewed source/skills, immutable ECR image and compatible local engine package, pinned rule/catalogue artifacts, infrastructure as code |
 | Telemetry | Structured operational logs, metrics and traces in approved AWS monitoring services |
+
+### Database deployment and operations
+
+Version PostgreSQL schema migrations with the application and apply them through the deployment pipeline, not per Runtime session. Use a migration runner whose Data API or restricted direct-connection support is explicitly validated, including long-running DDL handling. Validate schema compatibility before accepting hosted work. Plan backward-compatible migrations so a previous application release can still run during rollback.
+
+Reuse the AWS SDK client and its HTTPS connection pool, and bound Data API request concurrency across sessions, status polling and operational jobs. Configure request, statement and lock timeouts; monitor throttling, transaction expiry and writer load. Data API manages database connections, but does not remove Aurora compute or query-capacity limits.
+
+Select Aurora provisioned capacity or Serverless v2 after measuring concurrency and latency requirements; neither choice is implied by the API interface. Confirm Data API availability for the selected region/version. For production, plan a writer and at least one failover-capable Aurora Replica in another Availability Zone unless an approved availability objective permits otherwise. Configure automated backups, point-in-time recovery and retention; test restores alongside S3 artifact availability. Monitor writer capacity, transaction/lock waits, query latency, storage and failed migrations. Agree engine version, sizing, maintenance windows, recovery objectives and secret rotation before deployment. [Data API availability](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/data-api.regions.html), [Aurora availability](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.AuroraHighAvailability.html).
 
 ### Marketplace distribution and release flow
 
@@ -412,7 +444,9 @@ MCP Inspector can remain an optional approved diagnostic adapter. It is not requ
 4. **Hosted agent and service integration:** the same trusted skills and engine in the image, framework adapter, AgentCore invocation/authentication, storage, admission, leases, cancellation, resume and optional hosted-API client.
 5. **Pilot:** validate both backends, mixed batches, malicious skill instructions, target permission boundaries, failure recovery, data handling, performance and cost.
 
-Release criteria include verified skill loading from the pinned trusted package on both backends; rejection of unapproved plugin components and incompatible engine-tool contracts; no target activation/execution; equivalent deterministic results for equivalent captured evidence/context and supported capabilities across backends, concurrency settings and valid cache reuse; no deep remediation in fast mode; faithful findings under prompt-injection attempts; correct coverage for missing evidence or discovery limits; rejected cross-owner hosted access; safe retries and stale-attempt fencing where applicable; rollback of a complete release; and graceful partial reports when deep inference fails. A local test must complete with AgentCore invocation denied, without mandatory S3/DynamoDB access or automatic evidence upload. Verify target project instructions/hooks/MCP definitions never activate in the supported local host configuration. These are planned tests, not claims of validation already performed.
+Release criteria include verified skill loading from the pinned trusted package on both backends; rejection of unapproved plugin components and incompatible engine-tool contracts; no target activation/execution; equivalent deterministic results for equivalent captured evidence/context and supported capabilities across backends, concurrency settings and valid cache reuse; no deep remediation in fast mode; faithful findings under prompt-injection attempts; correct coverage for missing evidence or discovery limits; rejected cross-owner hosted access; safe retries and stale-attempt fencing where applicable; rollback of a complete release; and graceful partial reports when deep inference fails. A local test must complete with AgentCore invocation denied, without mandatory S3/Aurora/Data API access or automatic evidence upload. Verify target project instructions/hooks/MCP definitions never activate in the supported local host configuration. These are planned tests, not claims of validation already performed.
+
+Hosted persistence tests must exercise concurrent duplicate submissions, conflicting idempotency digests, competing resume attempts, cancellation/publication races, expired leases, uncertain commits and Aurora failover. Verify that S3 upload followed by failed database publication leaves no canonical result, and that retry cannot duplicate findings. Validate Data API transaction IDs/expiry, request/result limits, throttling/backoff, IAM/secret denial, owner-scoped queries, migration compatibility and database/artifact recovery. Load-test request concurrency and polling against writer capacity. No scan or model call should hold a database transaction open.
 
 ## 12. Open decisions before production
 
@@ -427,6 +461,7 @@ Release criteria include verified skill loading from the pinned trusted package 
 | Isolation | Whether a shared execution role satisfies phase/tenant requirements |
 | Bedrock | Approved model/profile, regions, residency, logging, token budgets and fallback policy |
 | Operations | Measured batch/concurrency/runtime limits, service objectives, cache policy, scale-out trigger, support ownership, explicit versus automatic recovery |
+| Aurora deployment | PostgreSQL version/region with Data API support, provisioned or Serverless v2 capacity, replica/failover configuration, private endpoint, IAM/secret access, request budgets, migrations and recovery objectives |
 | Data lifecycle | Classification, redaction, retention/deletion, backup/restore and report access |
 | Supply chain | Internal vulnerability feed, update cadence, plugin/rule promotion and reassessment triggers |
 
