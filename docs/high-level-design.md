@@ -94,7 +94,7 @@ Maintain the executable engine in the Security Agent application repository. Mai
 Proposed application layout; the following packages have not yet been implemented:
 
 ```text
-security-assessment/
+security-agent/
 ├── src/security_agent/
 │   ├── runtime/                 # API, identity, assessment lifecycle
 │   ├── agent/                   # Framework adapter and registered tools

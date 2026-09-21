@@ -4,6 +4,8 @@ Design and research for an internal security assessment agent covering Model Con
 
 **Status:** proposed design. This repository currently contains research findings and design decisions; it does not yet contain an executable scanner.
 
+**Repository:** [dliu-lab/security-agent](https://github.com/dliu-lab/security-agent).
+
 ## Objective
 
 Build Security Agent around one trusted scanner plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Support direct execution in a compatible local coding assistant and a hosted agent on Amazon Bedrock AgentCore Runtime. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode.
