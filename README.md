@@ -35,6 +35,7 @@ For repository scans from GitHub Actions, the proposed [remediation workflow](do
 - Inspect selected installed CLI packages/configuration through a local read-only collector; do not launch configured stdio servers or implicitly upload workstation evidence.
 - Deliver a local scanner plugin/engine integration and a hosted AgentCore agent, with typed submission, status, report, cancellation, and recovery operations for the remote API.
 - Use Strands Agents SDK for hosted agent orchestration and AgentCore SDK for Runtime integration; explicitly load the two trusted scanner skills.
+- Use corporate JWT for hosted API authentication, including approved machine identities for GHA; enforce target and report authorisation separately.
 - Local-assistant and hosted-agent orchestration use approved Bedrock inference in both modes. A remote client assistant adds its own host inference when used. Fast/deep distinguish assessment analysis, independently of local/hosted execution.
 - Fast mode runs deterministic assessment scripts and returns their findings; the assessment engine makes no model calls for detection or remediation.
 - Deep mode runs the same deterministic checks, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.

@@ -2,9 +2,11 @@
 
 **Status:** proposed work breakdown; no scanner, plugin, API, infrastructure or workflow has been implemented.
 
-**Design baseline:** [HLD v0.7](high-level-design.md) and [assessment design](assessment-design.md), including the four intake paths and optional GHA remediation PR. The HLD remains the architecture authority; this document defines delivery order and acceptance gates.
+**Design baseline:** [HLD v0.8](high-level-design.md) and [assessment design](assessment-design.md), including the four intake paths and optional GHA remediation PR. The HLD remains the architecture authority; this document defines delivery order and acceptance gates.
 
 **Selected hosted framework:** Strands Agents SDK, with AgentCore SDK Runtime integration. Load only the two trusted scanner skills through an explicit Strands `AgentSkills` configuration. Framework selection is settled; compatible dependency versions and loader behavior still require validation. The shared engine and local CLI remain independent of Strands.
+
+**Selected API authentication:** corporate JWT for user and approved machine clients. Provider configuration, issuer/audiences/scopes and the GHA machine-token flow remain implementation inputs. AWS service credentials are separate from inbound API authentication.
 
 Build the shared deterministic engine first and prove it through a local CLI. Add collectors and the trusted scanner plugin around that contract, then deploy the same engine through AgentCore. Deliver GHA reporting before enabling proposed patches and draft PRs. Tests accompany each component; the final pilot validates their integration and operating limits.
 
@@ -37,7 +39,7 @@ Keep executable code, CLI, API, infrastructure and GHA integration in this appli
 
 Create the proposed Python package structure from the HLD, development dependency lock, build configuration and CI for formatting, linting, type checks, tests and package builds. Add dependency and release compatibility metadata. Use the same engine source for the local package and hosted image.
 
-Record short architecture decisions for supported source languages/manifest patterns, skill dialects and local host versions. Run a bounded feasibility exercise to validate the pinned Strands/AgentCore SDK combination and trusted-skill loader, and verify the intended AWS region, Bedrock profile, Runtime identity/network path and Aurora Data API configuration. Select the corporate JWT machine integration or the IAM alternative; do not assume AWS credentials authenticate to a JWT-configured Runtime. Select the organisation's IaC and internal artifact-distribution tooling without adding a second deployment platform.
+Record short architecture decisions for supported source languages/manifest patterns, skill dialects and local host versions. Run a bounded feasibility exercise to validate the pinned Strands/AgentCore SDK combination and trusted-skill loader, and verify the intended AWS region, Bedrock profile, Runtime identity/network path and Aurora Data API configuration. Specify the selected corporate JWT provider, issuer/audiences/scopes, principal mappings and machine-token integration; do not assume AWS credentials authenticate to the API. Select the organisation's IaC and internal artifact-distribution tooling without adding a second deployment platform.
 
 **Done when:** package CI builds an empty installable application; source ownership and compatibility strategy are documented; feasibility results identify which deployment inputs are available and which remain blockers. No cloud capability is declared supported solely because a mock passed.
 
@@ -183,7 +185,7 @@ These are delivery checkpoints, not independent products. A prototype milestone 
 | Scanner-plugin repository location, marketplace publication and internal engine distribution | Reproducible local/hosted packaging in step 7 | Engine implementation and plugin source planning |
 | Approved Strands/AgentCore SDK versions, loader configuration and Bedrock profile/model/regions | Real inference in step 7 and image integration in step 9 | Tool contracts and simulated adapter failures |
 | AWS account/region, Aurora configuration, IaC, private connectivity, identity and retention | Real storage/invocation gates in steps 8–9 | Migrations, lifecycle logic, mocks and local tests |
-| GHA machine authentication, trusted workflow ref and approved repository/base refs | Workflow integration in step 10 | Typed client/helper and retry tests |
+| Corporate machine-JWT flow for GHA, trusted workflow ref and approved repository/base refs | Workflow integration in step 10 | Typed client/helper and retry tests |
 | Allowed patch classes, GitHub write credentials and downstream CI policy | Enabling PR delivery in step 11 | Patch validators and synthetic proposal fixtures |
 | Numeric reliability, performance and cost targets | Production sign-off in step 12 | Benchmark instrumentation and prototype measurements |
 

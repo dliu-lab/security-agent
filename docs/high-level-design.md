@@ -2,7 +2,7 @@
 
 **Status:** proposed architecture for review; no agent, scanner, or deployment has been implemented.
 
-**Version:** 0.7 — updated 21 September 2026
+**Version:** 0.8 — updated 21 September 2026
 
 **Audience:** security engineering, application engineering, cloud platform, and architecture reviewers.
 
@@ -28,6 +28,7 @@ The organisation already has a central plugin marketplace for skills and MCP pac
 | Product name: Security Agent | Confirmed |
 | Hosted service: AgentCore Runtime; API exposure through `InvokeAgentRuntime` | Confirmed |
 | Hosted agent framework: Strands Agents SDK | Confirmed |
+| Inbound API authentication: corporate JWT for user and approved machine clients | Confirmed |
 | Direct local scanner-plugin execution without AgentCore invocation | Confirmed direction |
 | One API and assessment lifecycle for MCP, skill, and mixed batches | Confirmed direction |
 | One trusted scanner plugin with MCP and skill assessment skills | Confirmed direction |
@@ -40,7 +41,7 @@ The organisation already has a central plugin marketplace for skills and MCP pac
 | Hosted state database: Amazon Aurora PostgreSQL | Confirmed direction |
 | Hosted SQL access through RDS Data API over HTTPS | Selected design for API-based database access |
 | Python engine, AgentCore SDK, S3 artifacts | Proposed implementation |
-| Authentication integration, AWS regions and service objectives | Open; recommendations and gates appear below |
+| Corporate identity-provider configuration, AWS regions and service objectives | Open; recommendations and gates appear below |
 
 The earlier EKS hosting proposal is superseded for the hosted service. Direct local execution is an additional supported delivery path. One hosted agent application may serve many isolated sessions; it does not mean one shared process or conversation for all users.
 
@@ -329,7 +330,7 @@ Keep `assessment_state`, corporate `policy_result`, `patch_status` and workflow 
 
 Use a trusted pinned workflow/helper and job-specific credentials. The assessment/validation jobs have no repository write token; only the publishing job receives narrowly scoped content and PR write access. Do not execute target actions, hooks, scripts or model-suggested validation commands in these jobs. GitHub App credentials may be needed when repository policy or later cross-repository support requires them. Workflow execution identity and permitted base refs are checked before granting write access; never run a privileged workflow from an arbitrary assessed ref. Retain branch protection and human review; no automatic merge or writes to the base branch. GitHub supports typed manual inputs and draft PR creation. [Workflow inputs and permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs), [PR API](https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request).
 
-AWS credential acquisition must match the configured API authentication. GitHub OIDC can obtain short-lived AWS credentials for an IAM-authenticated Runtime; the proposed corporate-JWT Runtime instead needs an approved machine-token integration. OIDC-to-AWS credentials do not automatically authenticate to a JWT-configured endpoint. Bind trust to the approved repository/workflow/environment and audience. [GitHub OIDC with AWS](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws).
+GHA authenticates to the Security Agent API through an approved corporate machine-JWT integration. Configure the trusted issuer, audience, scopes and machine-principal mapping. GitHub OIDC may separately obtain short-lived AWS credentials for authorised AWS operations; those credentials do not replace the corporate JWT required by this API. Bind any workload-federation trust to the approved repository/workflow/environment and audience. [GitHub OIDC with AWS](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws).
 
 PR creation can trigger or queue downstream CI depending on token and repository settings; draft status does not prevent execution. Validate the approved repository's CI policy before enabling write-back. Any target builds/tests belong to separately authorised isolated CI, outside the v1 assessment/patch jobs. Record checks as run, pending or unavailable; never claim they passed because a PR opened. Prevent bot loops and explicitly handle required CI that does not run automatically. [GitHub workflow-trigger behaviour](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
 
@@ -388,7 +389,7 @@ Capture the repository snapshot, scanner release/image, plugin/skill versions, r
 | Local assistant to engine | Approved host permissions and installed executable, typed arguments, neutral trusted workspace and no target instruction/configuration activation |
 | Local engine to evidence/results | Explicit filesystem roots, permitted target/network access, local retention and report permissions |
 
-Proposed default authentication is corporate JWT for both user clients and approved machine identities, subject to identity-provider support. Configure issuer, audiences, scopes and verified principal propagation. If the handler needs the bearer token, explicitly configure supported header forwarding and validation; do not assume identity claims appear automatically in the payload. An IAM/SigV4 alternative needs an equally explicit trusted ownership mechanism. One Runtime configuration uses the selected inbound authentication mode; do not assume IAM and JWT are interchangeable on the same configuration. [AWS inbound authentication](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html).
+Corporate JWT is the selected inbound authentication mode for both user clients and approved machine identities. Configure the corporate identity provider's discovery/issuer settings, accepted audiences, scopes and verified principal propagation. If the handler needs the bearer token, explicitly configure supported header forwarding and validation; do not assume identity claims appear automatically in the payload. Validate the provider configuration and user/machine token flows before hosted release. IAM remains relevant to AWS service access and the Runtime execution role, separately from caller authentication to this API. [AWS inbound authentication](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html).
 
 These API authentication requirements apply to hosted execution. Direct local scanning relies on the approved workstation/assistant identity, OS permissions, configured assessment scope, and separately granted repository, target and Bedrock access. It requires no AgentCore invocation permission. Local host permissions and isolation are not equivalent to Runtime isolation; validate them independently. Keep AWS/target credentials in approved credential providers outside plugin instructions, prompts and reports.
 
@@ -543,7 +544,7 @@ For optional GHA delivery, test opt-out makes no repository writes; fast/endpoin
 | Agent implementation | Approved Strands/AgentCore SDK versions and validated trusted-skill loader configuration |
 | Marketplace integration | Marketplace format/location, package source and approval process, immutable identity/signature scheme, engine compatibility contract and optional API-client publication |
 | Local delivery | Supported assistants/OS/architectures, engine package installation, approved local inference/configuration, host permission settings, artifact retention and recovery support |
-| Identity | JWT or IAM integration, machine callers, session binding and verified ownership propagation |
+| Identity | Corporate JWT issuer/discovery configuration, audiences/scopes, user and machine-token flows, session binding and verified ownership propagation |
 | Evidence and targets | Bundle/ingestion and selector schemas, supported local host versions/configuration scopes, MCP revisions/transports, skill/plugin dialects, discovery bounds, credentials and allowlists |
 | Isolation | Whether a shared execution role satisfies phase/tenant requirements |
 | Bedrock | Approved model/profile, regions, residency, logging, token budgets and fallback policy |
