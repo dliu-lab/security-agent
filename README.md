@@ -18,6 +18,8 @@ Read the [Security Agent high-level design](docs/high-level-design.md) for archi
 
 Read [the detailed assessment design](docs/assessment-design.md) for control coverage, rule contracts, evidence requirements, and implementation considerations.
 
+Use the [implementation plan](docs/implementation-plan.md) for the build sequence, dependencies, deliverables, acceptance gates and first implementation backlog.
+
 The [four assessment entry points](docs/high-level-design.md#four-assessment-entry-points) cover skill repositories, MCP source repositories, MCP endpoints and installed CLI skills/MCPs. Repository, endpoint and local-installation collectors feed the same two scanners. Installed evidence can be assessed locally or explicitly exported for hosted assessment.
 
 For repository scans from GitHub Actions, the proposed [remediation workflow](docs/high-level-design.md#github-actions-assessment-and-optional-remediation-pr) adds a `workflow_dispatch` boolean, `create_remediation_pr`, defaulting to `false`. Enabling it requires deep mode: the API returns findings plus a proposed patch, and trusted GHA jobs validate the changes and open a draft PR. Original findings remain intact and no automatic merge occurs. This workflow is designed but not implemented.
@@ -47,6 +49,8 @@ The agent/engine and scanner plugin have separate source repositories. The exist
 Repository assessments identify the inspected commit or snapshot. When a running endpoint is also assessed, record whether that source corresponds to its deployed version; available source alone does not verify the live deployment. See [evidence availability](docs/assessment-design.md#evidence-availability-and-deployment).
 
 ## Next implementation steps
+
+The [implementation plan](docs/implementation-plan.md) expands these workstreams into sequenced, testable milestones. Start with a local fast scan of a mixed repository, then add the remaining collectors, plugin, hosted API and GHA integration.
 
 1. Agree the input, evidence, finding, coverage, and remediation schemas.
 2. Review a representative sample of corporate controls and define applicability and evidence requirements.

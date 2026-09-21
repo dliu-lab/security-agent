@@ -452,6 +452,8 @@ Use the selected machine authentication for Security Agent. AWS OIDC role creden
 
 ## 9. Delivery milestones and open decisions
 
+Follow the [implementation plan](implementation-plan.md) for execution order, parallel workstreams, acceptance gates and the first implementation backlog. The milestones below summarise scanner coverage and integration requirements.
+
 1. Define repository/endpoint/installation selectors, portable bundle and typed MCP/skill evidence, finding, coverage, and mapping schemas using representative corporate controls.
 2. Implement the shared engine and separate rule packs with fixtures and a small set of high-confidence checks for each target type.
 3. Add bounded, explicitly permitted MCP discovery and inert skill/plugin source inspection with honest coverage reporting.

@@ -518,6 +518,8 @@ AgentCore Gateway, Memory, a vector database, a browser UI, and a separate scann
 
 ## 11. Delivery and validation
 
+The [implementation plan](implementation-plan.md) expands this architecture into dependencies, deliverables, acceptance gates and an initial backlog. The stages below remain the high-level delivery overview.
+
 1. **Contracts and fixtures:** repository/endpoint/installation input and portable bundle schemas, target/evidence/result schemas, representative corporate controls, versioned rule interfaces, benign/vulnerable MCP and skill fixtures.
 2. **Assessment core:** static checks, permitted discovery, deterministic findings/coverage, shared control mapping, report output.
 3. **Local plugin execution:** canonical marketplace scanner plugin, installed engine CLI/tool adapter, approved host/model configuration, local records, mode gates and compatibility preflight.
