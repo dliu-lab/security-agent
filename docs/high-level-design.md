@@ -86,6 +86,17 @@ The Runtime box is a compute boundary. Its internal modules share the Runtime id
 
 The native API invokes application code; it does not automatically create REST resources such as `/assessments`. AgentCore's HTTP application contract provides `/invocations` and `/ping`. The SDK supplies the serving integration. [AWS HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html).
 
+### Collector coverage
+
+For Security Agent, the planned collectors already cover the required paths:
+
+| Scenario | Required component |
+| --- | --- |
+| Skill repository | Repository collector and skill checks |
+| MCP source repository | Repository collector and MCP checks |
+| MCP endpoint | Bounded MCP SDK client |
+| Installed CLI skill/MCP | Local installation collector, with separately authorised endpoint discovery |
+
 ### Component responsibilities
 
 | Component | Responsibilities | Authoritative output |
@@ -503,7 +514,7 @@ Log assessment/attempt IDs, phase transitions, elapsed time, error classes, arti
 | Performance/cost | Benchmark repository sizes and 20/100/500-target workloads, concurrent callers and cache states; cap inference and task concurrency separately |
 | Availability and recovery | Agree numeric service objectives and recovery ownership before production |
 
-MCP Inspector can remain an optional approved diagnostic adapter. It is not required for the production engine or used as the policy verdict. AgentCore Gateway, Memory, a vector database, a browser UI, and a separate scanner MCP server are not required by this HLD.
+AgentCore Gateway, Memory, a vector database, a browser UI, and a separate scanner MCP server are not required by this HLD.
 
 ## 11. Delivery and validation
 

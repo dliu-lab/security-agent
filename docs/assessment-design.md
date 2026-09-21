@@ -99,6 +99,8 @@ Keep these configuration dimensions separate:
 
 Implement three evidence collectors: `repository`, `mcp_endpoint` and `cli_installation`. They produce a shared inventory/evidence contract consumed by the two target adapters, `skill` and `mcp`. Do not duplicate check engines for each entry point. A repository or installation can contain many targets; a target can have several evidence sources. Internal/external ownership, collection location, assessment backend and fast/deep mode remain independent fields.
 
+The [HLD collector coverage table](high-level-design.md#collector-coverage) maps each scenario to its required component. Endpoint collection uses a bounded MCP SDK client; repository and installation collection feed the shared skill/MCP checks described below.
+
 | Scenario | Resolution | Reused checks | Expected coverage boundary |
 | --- | --- | --- | --- |
 | Repository containing skills | Capture once; discover `SKILL.md` packages within approved paths and supported plugin layouts; attach relevant supporting files and containing-plugin context | Skill instructions, static scripts, dependencies, references, shared plugin configuration | Report excluded paths, missing references and unsupported dialects; repository content does not prove how a host loads it |
@@ -245,7 +247,7 @@ Neither the local assistant, hosted agent, remote client host, nor remediation m
 
 ### Inference boundaries
 
-MCP is a communication protocol. A scripted client can connect to a server and request discovery results without invoking a model; the official [MCP Inspector CLI documentation](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector/cli) demonstrates scripted MCP requests.
+MCP is a communication protocol. The bounded MCP SDK client can perform permitted discovery through scripted requests without invoking a model. The engine enforces discovery scope and limits independently of agent inference.
 
 | Boundary | Fast mode | Deep mode |
 | --- | --- | --- |
