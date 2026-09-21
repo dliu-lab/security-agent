@@ -40,6 +40,9 @@ For repository scans from GitHub Actions, the proposed [remediation workflow](do
 - Fast mode runs deterministic assessment scripts and returns their findings; the assessment engine makes no model calls for detection or remediation.
 - Deep mode runs the same deterministic checks, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
 - Use the corporate control catalogue as the primary policy reference, with reviewed mappings to applicable MCP, agentic, and software-security categories.
+- Load CISS through an internal catalogue adapter, pin its identity and content digest, and validate control/clause status before applying mappings. Keep corporate content and mappings outside this repository.
+- Separate source-only results from environment/instance-scoped deployment evaluations. Bind configuration evidence to the assessment; evaluate severity and both match/conclusion confidence per finding.
+- Keep v1 dependency analysis to inventory, pinning, lockfiles and provenance, with separately attributed approved scanner outputs where supplied. Resolve corporate scanner approval requirements early; the engine does not determine CVE applicability.
 - Runtime assessment must not depend on external scanning services or public inference APIs. Approved AWS infrastructure, explicitly approved repository retrieval, target discovery, and approved Bedrock inference are permitted network dependencies when enabled.
 
 MCP communication itself does not require model inference: a scripted client can perform discovery. Client-host inference, hosted-agent orchestration, assessment-engine analysis, and any inference inside the target MCP are separate boundaries. Fast mode makes no claim about a target server's internal implementation. See [inference boundaries in the design](docs/assessment-design.md#inference-boundaries).
@@ -48,14 +51,14 @@ Batch size does not determine runtime count. Hosted execution starts with one bo
 
 The agent/engine and scanner plugin have separate source repositories. The existing corporate marketplace will distribute approved releases from the scanner-plugin repository to local assistants and the hosted image build. The optional remote client has a separate plugin package. Pin compatible plugin, engine and rule releases in both paths, with explicit skill loading and separate evidence paths. Local filesystem, credentials and sandbox controls differ from AgentCore isolation and must be configured explicitly. See [marketplace and deployment packaging in the HLD](docs/high-level-design.md#10-deployment-and-operations).
 
-Repository assessments identify the inspected commit or snapshot. When a running endpoint is also assessed, record whether that source corresponds to its deployed version; available source alone does not verify the live deployment. See [evidence availability](docs/assessment-design.md#evidence-availability-and-deployment).
+Repository assessments identify the inspected commit or snapshot. Deployment assessments additionally identify the target environment/instance and selected configuration evidence; identical source can have different results in different environments. When a running endpoint is also assessed, record whether that source corresponds to its deployed version; available source alone does not verify the live deployment. Source-only scans remain supported. See [evidence availability](docs/assessment-design.md#evidence-availability-and-deployment).
 
 ## Next implementation steps
 
 The [implementation plan](docs/implementation-plan.md) expands these workstreams into sequenced, testable milestones. Start with a local fast scan of a mixed repository, then add the remaining collectors, plugin, hosted API and GHA integration.
 
 1. Agree the input, evidence, finding, coverage, and remediation schemas.
-2. Review a representative sample of corporate controls and define applicability and evidence requirements.
+2. Resolve scanner classification/approval requirements and validate authorised access to the existing internal CISS catalogue; review mappings, applicability and evidence requirements.
 3. Implement the shared deterministic engine, separate MCP/skill rule packs, and bounded collectors.
 4. Add rule fixtures and report generation.
 5. Add the two scanner skills, shared engine CLI/tool adapters, compatible pinned local package and hosted image, and restricted Bedrock remediation adapter.

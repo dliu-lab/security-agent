@@ -2,7 +2,7 @@
 
 **Status:** proposed architecture for review; no agent, scanner, or deployment has been implemented.
 
-**Version:** 0.8 — updated 21 September 2026
+**Version:** 0.9 — updated 21 September 2026
 
 **Audience:** security engineering, application engineering, cloud platform, and architecture reviewers.
 
@@ -51,6 +51,10 @@ Internal and external targets can both supply repository source or configuration
 
 V1 supports individual assessments and batches, including repositories containing both target types. Each target has an explicit ID, type, and evidence scope. A report describes what was assessed and what remains unknown; it is not a blanket guarantee of safety.
 
+Separate the source subject from its assessment context. Record `assessment_scope` as `source_only` or `deployment`; a deployment-scoped target also records `environment_ref` and an `instance_ref` identifying the deployment or installation. Use an explicit `unspecified` environment when it cannot be established, and retain whether an environment association is declared or verified. Never infer production from a branch or directory name. Source-only assessments require no deployment identity. The target environment is independent of the scanner's local/hosted backend and collection location.
+
+Identical source deployed in different environments yields distinct target evaluations while sharing parsing work. Deployment configuration and overlays are explicit collector inputs, associated with their intended target and precedence. Bind configuration evidence references, digests, provenance and unresolved values into the canonical manifest. Repository defaults alone cannot establish effective deployment configuration; missing or conflicting evidence leaves the affected deployment checks unknown. This contract does not authorise additional cloud discovery.
+
 ### Four assessment entry points
 
 Support the following scenarios through three collection adapters and the existing two scanners. Collection location is independent of where checks run; collecting workstation evidence locally does not require running the assessment in AgentCore.
@@ -74,7 +78,9 @@ Endpoint collection can run locally or from Runtime only where the approved netw
 
 V1 assessment activities are static inspection and explicitly authorised MCP discovery/listing. Activating target scripts, hooks or plugins, installing target packages, running builds, starting target MCPs, reading MCP resources, retrieving prompts and invoking target tools are outside v1 scope. A discovery permission does not enable those activities; any future behavioural-testing capability needs a separate explicit contract. Runtime does not write to assessed repositories or deployments. For source assessments, an explicitly selected GitHub Actions workflow can apply validated proposed edits to a new branch and open a draft PR as described in section 6; merging remains a repository review decision. References to other packages or endpoints do not authorise following them.
 
-Approved open-source dependencies are packaged internally. Rules and vulnerability data use reviewed, versioned inputs; external scanning/enrichment services and unapproved model APIs are not runtime dependencies. Explicitly approved repository retrieval and MCP target discovery remain permitted. A representative corporate catalogue has not yet been supplied, so actual control IDs, mappings, and policy thresholds remain to be defined.
+Approved open-source dependencies are packaged internally. Rules use reviewed, versioned inputs; external scanning/enrichment services and unapproved model APIs are not runtime dependencies. Explicitly approved repository retrieval and MCP target discovery remain permitted. CISS is the internal corporate control catalogue; review feedback reports an existing machine-readable OSCAL source. Confirm its authorised location, schema and access, then import authoritative identifiers rather than inventing them. Reviewed rule mappings and policy thresholds remain separate work. Corporate catalogue content and mappings stay in approved private storage, outside this repository.
+
+V1 dependency analysis collects inventory, pinning, lockfiles and provenance; the engine does not determine CVE applicability or independently assign vulnerability severity. Where included in approved scope, it may ingest supplied outputs from an approved scanner, preserving the producer, assessed subject, scan time, data version and original severity. Missing, stale or mismatched outputs cannot establish vulnerability assurance. No new external scanner API is required. Decide Security Agent's corporate tool classification, approval requirements and configuration-review obligations in implementation steps 1–2; an evidence-only dependency capability is not an exemption. The specific approval policy cited in review feedback still requires verification against internal CISS and its policy owner.
 
 ## 3. System architecture
 
@@ -159,7 +165,9 @@ security-agent/
 └── tests/                       # Fixtures and expected results
 ```
 
-The mapping code applies reviewed rule-to-control relationships supplied as versioned YAML/JSON or equivalent structured data. Confidential catalogue content stays in approved private storage. Record the catalogue, mappings, policy and rule versions used by every assessment; the LLM cannot create authoritative control IDs or replace mapping decisions.
+The mapping code applies reviewed rule-to-control relationships supplied as versioned YAML/JSON or equivalent structured data. An internal catalogue adapter loads the authorised CISS artifact; catalogue import does not generate those reviewed relationships. For OSCAL, retain catalogue UUID, document version, OSCAL schema version, exact control/clause IDs and a verified content digest. Pin mapping, policy and rule artifacts independently. Confidential catalogue content and mappings stay in approved private storage; the LLM cannot create authoritative control IDs or replace mapping decisions.
+
+At mapping load, validate identifier resolution, applicability and control/clause status against that pinned catalogue using a reviewed interpretation of CISS properties. Reject missing or withdrawn references as active mandatory mappings; do not silently substitute another control or drop the requirement. Invalid required mappings block the corporate policy verdict while technical findings and the configuration error remain reportable. Keep historical results bound to their original catalogue and report withdrawals/replacements explicitly during reassessment. Preserve distinctions such as deprecated and superseded. OSCAL defines control status properties and separate catalogue/document/schema identities; clause-specific CISS status encoding still needs internal validation. [NIST OSCAL catalogue reference](https://pages.nist.gov/OSCAL-Reference/models/v1.2.3/catalog/json-reference/).
 
 ### Local and hosted execution backends
 
@@ -235,10 +243,10 @@ Both assessment skills invoke the high-level engine operation, such as `run_asse
 
 | Stage | Responsibility | Output |
 | --- | --- | --- |
-| Collection | Acquire a bounded approved snapshot, or permitted MCP discovery responses; record location, hash, time and retrieval errors | Traceable evidence |
-| Inventory | Discover skills/MCP targets and associate their files, references and containing-plugin context within the approved scope | Frozen target inventory and shared file index |
-| Checks | Run applicable deterministic rules against captured evidence; reuse common parsing and repository checks | Check results, findings and coverage gaps |
-| Mapping and policy | Apply reviewed mappings, applicability, severity and policy rules | Corporate-control coverage and assessment policy result |
+| Collection | Acquire approved source/installation snapshots, scoped configuration/overlays or permitted MCP discovery responses; record provenance, hash, time and retrieval errors | Traceable evidence |
+| Inventory | Discover skills/MCP subjects and associate their files, configuration and environment/instance scope without collapsing distinct deployments | Frozen target inventory and shared file index |
+| Checks | Run applicable deterministic rules; evaluate instance severity and both confidence axes from captured evidence; reuse parsing | Check results, findings and coverage gaps |
+| Mapping and policy | Validate pinned catalogue/mapping status, then apply reviewed applicability, exceptions and policy rules | Corporate-control coverage and assessment policy result |
 | Reporting | Preserve per-target evidence references and aggregate shared findings | Deterministic report and machine-readable results |
 
 For skills, collected evidence includes `SKILL.md`, supporting scripts/resources, dependency manifests and relevant plugin configuration. For MCP source, it includes implementation, tool definitions and available configuration/deployment files. Permitted endpoint discovery can collect server information, advertised tool schemas and authentication metadata. Collection never activates target skills, executes scripts, installs dependencies, starts target MCPs or invokes target tools. Metadata is evidence of a declaration, not proof of runtime enforcement.
@@ -281,11 +289,13 @@ Illustrative submission; artifact IDs refer to previously ingested, authorised, 
     {
       "target_id": "mcp-01",
       "target_type": "mcp",
+      "assessment_scope": "source_only",
       "evidence_refs": ["artifact-mcp-source-001"]
     },
     {
       "target_id": "skill-01",
       "target_type": "skill",
+      "assessment_scope": "source_only",
       "evidence_refs": ["artifact-skill-source-001"]
     }
   ],
@@ -305,7 +315,7 @@ At completion, bind evidence to the validated S3 object version and digest, or p
 
 Formalise a submission-selector union: hosted `start_assessment` accepts exactly one of `targets` (explicit skill/MCP descriptors) or `repository_scope` (snapshot reference, permitted target types, path selectors and inventory limits). An explicit MCP target may carry an `endpoint_ref` resolved against approved destinations, with separately authorised discovery operations and credentials. Local CLI submission additionally accepts `installation_scope`, containing supported host, project context, selected configuration scopes/target selectors and read roots; the hosted API rejects this form because it cannot inspect the caller's machine. An exported installation bundle is submitted through explicit `targets` and owner-scoped `evidence_refs`. These field names are proposed contracts, not implemented APIs.
 
-Acceptance can precede inventory completion; target counts remain pending until discovery produces a durable inventory. Derive stable repository target IDs from the snapshot and package paths, and installed target IDs from the capture plus host/scope/registration identity. Record the resolved inventory and reuse it on resume. Discovery cannot broaden the caller's permissions. Use `targets` for mixed evidence associations and mixed batches after bounded inventory has resolved their identities. The example above shows explicitly identified targets; the [companion intake examples](assessment-design.md#submission-examples) specify the four entry points.
+Acceptance can precede inventory completion; target counts remain pending until discovery produces a durable inventory. Derive reusable repository subject IDs from the snapshot and package paths, and installed subject IDs from the capture plus host/scope/registration identity. Target evaluation identity additionally includes assessment scope and, where applicable, environment and deployment/installation instance. Bind the selected configuration evidence and digest to the manifest; record the resolved inventory and reuse it on resume. Discovery cannot broaden the caller's permissions. Use `targets` for mixed evidence associations and mixed batches after bounded inventory has resolved their identities. The example above shows explicitly identified targets; the [companion intake examples](assessment-design.md#submission-examples) specify the four entry points.
 
 Duplicate requests from the same owner with the same key and input digest return the existing assessment. Conflicting reuse is rejected. Client timeouts must be retried with the original key. Status/report operations remain available after the original compute has stopped by reading durable storage in an authorised invocation.
 
@@ -344,12 +354,14 @@ Persist the resolved base SHA, evidence references, canonical inputs, idempotenc
 | --- | --- |
 | Assessment | ID, owner/tenant, canonical manifest and digest, backend, mode, state, target counts, versions, budgets, artifact references |
 | Attempt | Attempt ID, assessment ID, hosted Runtime session or local execution reference, phase, cancellation, failure classification and backend-specific recovery metadata |
-| Target | Target ID/type, input kind, origin, hosting, host/scope/registration identity where installed, approved access, evidence set, source/installation/deployment correspondence |
+| Target | Target ID/type, source/package subject, input kind, origin, hosting, assessment scope, environment/instance identity and provenance, host/scope/registration where installed, approved access, configuration-set references/digest, evidence set and correspondence |
 | Evidence | Immutable artifact reference/hash, source revision, location, collector/host-adapter version, collection operation/time/location, access context, redactions/exclusions, observed/declared/inferred classification |
-| Finding | Stable check identity/version, target links, evidence references, severity, confidence, corporate mappings and limitations |
+| Finding | Stable check identity/version, scoped target links, evidence references, evaluated severity with policy version/factors/rationale, `match_confidence` and `conclusion_confidence` with separate bases, corporate mappings and limitations |
 | Coverage | Applicable controls/checks with `pass`, `fail`, `unknown`, `not_applicable`, `error`, or `skipped` and reasons |
 | Remediation | Finding/evidence IDs, suggestion, assumptions, verification steps, model/profile/prompt metadata |
 | Patch proposal | Requested generation flag, source repository/base commit, finding-linked edits, expected file hashes, patch digest, generation status and limitations |
+
+Rules define a versioned severity policy and permitted factors; each finding carries the evaluated severity for that evidence and target context. Do not copy a rule-level default without evaluating the instance or transfer severity from a different match. Evidence that disproves the rule predicate changes the check result, rather than merely lowering severity. `match_confidence` describes certainty of the evidence match; `conclusion_confidence` describes certainty of its security interpretation in that context. Each records a value, basis and limitations; these are not calibrated probabilities. Models cannot override check outcomes, severity, either confidence axis, mappings or environment binding. Shared findings may group only equivalent outcomes; retain distinct results where context changes the evaluation.
 
 For hosted assessments, use Amazon Aurora PostgreSQL for assessment, attempt, target, finding, coverage and artifact-reference records. Use relational keys and link tables for finding-to-target, evidence and versioned control relationships, with indexes for authorised assessment lookup, owner/time listings and required finding/control queries. Use stable unique result/finding keys within each assessment so retried publication does not duplicate rows. Store immutable evidence, checkpoint payloads and generated reports in private encrypted S3; retain their object references and hashes in PostgreSQL. Keep advisory text separate from authoritative findings, and retain the pinned catalogue/mapping identity rather than treating the database as a replacement policy source.
 
@@ -371,7 +383,7 @@ Bound request sizes, result pages and transaction batches; keep large source/rep
 
 Corporate controls determine applicability and policy decisions. Maintain reviewed, versioned many-to-many mappings from checks to controls and relevant external categories. MCP guidance and OWASP MCP categories supplement MCP coverage; skill findings use applicable agentic/software-security categories. Missing mappings and mandatory unknowns remain explicit. No model creates authoritative corporate control IDs.
 
-Capture the repository snapshot, scanner release/image, plugin/skill versions, rule pack, catalogue/mapping versions, prompts, and model settings. Resume uses the same approved snapshot and versions or creates a new assessment if equivalence cannot be preserved.
+Capture the repository snapshot, target scope/environment/instance, configuration-set references/digest, scanner release/image, plugin/skill versions, rule pack, catalogue identity/content digest, mapping/policy versions, prompts and model settings. Resume preserves these bindings and validates current access and policy eligibility; changed evidence, environment or required versions require a new assessment if equivalence cannot be preserved.
 
 ## 8. Identity and security boundaries
 
@@ -449,7 +461,7 @@ Hosting a skill on AgentCore does not itself parallelise repository inspection. 
 
 Start by benchmarking one and two CPU-heavy workers, then tune I/O and inference concurrency independently. AWS currently lists a maximum allocation of 2 vCPU and 8 GB per Runtime session for the proposed microVM model; revalidate limits for the selected deployment before setting defaults. Worker count is not a CPU allocation. [AWS Runtime quotas](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/bedrock-agentcore-limits.html).
 
-Separate reusable parsing from policy-result caches. Parsing cache identities include content hashes, parser versions and relevant shared scripts, references, plugin configuration and dependency manifests. Result reuse additionally requires compatible engine/rule, catalogue/mapping/policy and vulnerability-data versions, target/deployment attributes, authorised evidence/discovery scope, coverage inputs and current exception state. Recompute applicability, policy and coverage when those inputs differ; reuse of a parsed file alone never implies reuse of its verdict. Scope caches to authorised owners and revalidate access on reuse. Invalidate affected targets when shared context changes, and never treat cached endpoint observations as newly collected evidence.
+Separate reusable parsing from policy-result caches. Parsing cache identities include content hashes, parser versions and relevant shared scripts, references, plugin configuration and dependency manifests. Result reuse additionally requires compatible engine/rule and catalogue/mapping/policy identities and digests, any supplied scanner-output identities/freshness, assessment scope/environment/instance, configuration-set digest/provenance, authorised evidence/discovery scope, coverage inputs and current exception state. Recompute applicability, policy and coverage when those inputs differ; reuse of a parsed file alone never implies reuse of its verdict. Scope caches to authorised owners and revalidate access on reuse. Invalidate affected targets when shared context changes, and never treat cached endpoint observations as newly collected evidence.
 
 No performance or batch-size guarantees have been measured. Benchmark representative 20-, 100- and 500-skill repositories with both small instruction packages and large script/dependency trees, including hosted concurrent callers, local hardware profiles and cold/warm starts. Measure ingestion, inventory, checks, time to deterministic report, deep completion, peak memory/CPU, tokens, throttling, cache effectiveness and cost. Tune local workers to available local resources rather than applying Runtime CPU limits to the workstation. Verify that concurrency and caching preserve deterministic findings and explicit coverage.
 
@@ -522,7 +534,7 @@ AgentCore Gateway, Memory, a vector database, a browser UI, and a separate scann
 
 The [implementation plan](implementation-plan.md) expands this architecture into dependencies, deliverables, acceptance gates and an initial backlog. The stages below remain the high-level delivery overview.
 
-1. **Contracts and fixtures:** repository/endpoint/installation input and portable bundle schemas, target/evidence/result schemas, representative corporate controls, versioned rule interfaces, benign/vulnerable MCP and skill fixtures.
+1. **Contracts and fixtures:** early scanner classification/approval review, internal CISS adapter and mapping validation, environment-scoped target/evidence/result and portable bundle schemas, versioned severity/confidence contracts, benign/vulnerable MCP and skill fixtures. Keep synthetic controls confined to tests.
 2. **Assessment core:** static checks, permitted discovery, deterministic findings/coverage, shared control mapping, report output.
 3. **Local plugin execution:** canonical marketplace scanner plugin, installed engine CLI/tool adapter, approved host/model configuration, local records, mode gates and compatibility preflight.
 4. **Hosted agent and service integration:** the same trusted skills and engine in the image, framework adapter, AgentCore invocation/authentication, storage, admission, leases, cancellation, resume and optional hosted-API client.
@@ -532,6 +544,8 @@ Release criteria include verified skill loading from the pinned trusted package 
 
 Hosted persistence tests must exercise concurrent duplicate submissions, conflicting idempotency digests, competing resume attempts, cancellation/publication races, expired leases, uncertain commits and Aurora failover. Verify that S3 upload followed by failed database publication leaves no canonical result, and that retry cannot duplicate findings. Validate Data API transaction IDs/expiry, request/result limits, throttling/backoff, IAM/secret denial, owner-scoped queries, migration compatibility and database/artifact recovery. Load-test request concurrency and polling against writer capacity. No scan or model call should hold a database transaction open.
 
+Verify identical source in dev and production produces separate evaluations with shared parsing, insecure overlays cannot inherit a secure-default pass, and missing/conflicting configuration leaves affected checks unknown. Source-only scans remain valid. Different configuration digests cannot reuse policy results or silently change resumed scope. Test withdrawn controls and clauses, unknown IDs/status encodings, catalogue digest mismatch, different instance severities and a certain match with uncertain security interpretation. Invalid mandatory mappings block the corporate verdict without erasing findings. Model output cannot change these fields. Validate each supported MCP revision against its own SDK/conformance fixtures.
+
 Exercise all four intake scenarios: a 20-skill repository, multiple MCP packages with ambiguous candidates, a protected endpoint with partial discovery, and an installed mixed plugin containing skills, hooks, an HTTP MCP and a stdio launch command. Confirm scope precedence and disabled/shadowed registrations are recorded, package bytes are deduplicated without collapsing configured instances, credential values are removed from exports, missing files/unsupported hosts remain explicit, and neither assistant startup nor collection activates targets. Test concurrent installation updates, symlink escapes, upload ownership/integrity/limits and rejection of hosted workstation paths/loopback assumptions. Benchmark collection, inventory, checks and advice separately; twenty targets need neither twenty clones nor twenty Runtime sessions.
 
 For optional GHA delivery, test opt-out makes no repository writes; fast/endpoint-only PR requests are rejected; wrong-base, redacted or out-of-scope edits cannot publish; failed generation preserves findings; no-op/manual-only results create no PR; retried PR creation reconciles rather than duplicates; human edits are protected; expired API/GitHub credentials and failed checks produce explicit delivery errors; and downstream CI follows the approved trigger/isolation policy. These validate a proposed integration, not an existing workflow.
@@ -540,18 +554,19 @@ For optional GHA delivery, test opt-out makes no repository writes; fast/endpoin
 
 | Decision | Required input |
 | --- | --- |
-| Corporate policy | Catalogue sample/format, control mappings, severity, mandatory unknowns, exceptions |
+| Corporate policy | Authorised CISS location/access, reported OSCAL schema and clause-status semantics, catalogue pin, reviewed mappings, instance severity/confidence policy, mandatory unknowns and exceptions |
+| Scanner governance | Early policy-owner verification of tool classification, approval scope and configuration-review obligations; required approvals before operational use |
 | Agent implementation | Approved Strands/AgentCore SDK versions and validated trusted-skill loader configuration |
 | Marketplace integration | Marketplace format/location, package source and approval process, immutable identity/signature scheme, engine compatibility contract and optional API-client publication |
 | Local delivery | Supported assistants/OS/architectures, engine package installation, approved local inference/configuration, host permission settings, artifact retention and recovery support |
 | Identity | Corporate JWT issuer/discovery configuration, audiences/scopes, user and machine-token flows, session binding and verified ownership propagation |
-| Evidence and targets | Bundle/ingestion and selector schemas, supported local host versions/configuration scopes, MCP revisions/transports, skill/plugin dialects, discovery bounds, credentials and allowlists |
+| Evidence and targets | Environment/instance identifiers, configuration inputs/precedence, bundle/ingestion and selector schemas, supported local host versions/scopes, MCP revisions/transports, skill/plugin dialects, discovery bounds, credentials and allowlists |
 | Isolation | Whether a shared execution role satisfies phase/tenant requirements |
 | Bedrock | Approved model/profile, regions, residency, logging, token budgets and fallback policy |
 | Operations | Measured batch/concurrency/runtime limits, service objectives, cache policy, scale-out trigger, support ownership, explicit versus automatic recovery |
 | Aurora deployment | PostgreSQL version/region with Data API support, provisioned or Serverless v2 capacity, replica/failover configuration, private endpoint, IAM/secret access, request budgets, migrations and recovery objectives |
 | Data lifecycle | Classification, redaction, retention/deletion, backup/restore and report access |
-| Supply chain | Internal vulnerability feed, update cadence, plugin/rule promotion and reassessment triggers |
+| Supply chain | Evidence-only dependency checks; any approved scanner-output format, subject binding and freshness policy; plugin/rule promotion and reassessment triggers |
 | GitHub delivery | Trusted workflow/helper location, approved repositories/base refs, machine/API identity, write token policy, allowed patch classes/paths, validation gates and downstream CI behaviour |
 
 The [detailed assessment design](assessment-design.md) records scanner coverage, rule contracts, and further implementation considerations. This HLD defines the overall Security Agent architecture and its review boundaries.
