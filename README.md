@@ -6,9 +6,9 @@ Design and research for an internal security assessment agent covering Model Con
 
 ## Objective
 
-Build Security Agent as one security assessment agent deployed on Amazon Bedrock AgentCore Runtime and exposed through its authenticated invocation API. Package its assessment workflows in one trusted security plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode.
+Build Security Agent around one trusted scanner plugin containing `mcp-assessment` and `skill-assessment` skills, backed by a shared deterministic engine, corporate-control mappings, evidence, and reporting. Support direct execution in a compatible local coding assistant and a hosted agent on Amazon Bedrock AgentCore Runtime. Assess internal and external MCPs and skill packages using available source/configuration and explicitly permitted endpoint evidence, with additional analysis through an approved AWS Bedrock inference profile for remediation in deep mode.
 
-AgentCore Runtime is the required production hosting environment and replaces the earlier EKS deployment proposal. The two scanner skills run inside the hosted agent; a separate Claude Code terminal client skill invokes the same API. Application callers do not require a Claude Code session. A local CLI supports engine development and verification. Both fast and deep assessments run through the deployed agent.
+AgentCore Runtime remains the hosting environment for the remote service and replaces the earlier EKS deployment proposal. Locally, the same marketplace scanner plugin invokes an installed, pinned engine CLI/tool adapter without an AgentCore call. The application repository will produce both the hosted image and a reusable local engine package; neither is implemented yet. An optional, separate client plugin invokes the hosted API when remote execution is preferred. Both execution paths support fast and deep mode.
 
 ## Start here
 
@@ -21,10 +21,11 @@ Read [the detailed assessment design](docs/assessment-design.md) for control cov
 - Assess both internal and external MCPs using available repository source code, configuration, deployment artifacts, and/or endpoint evidence.
 - Assess agent skill packages, including instruction files, referenced scripts, resource paths, and relevant containing-plugin configuration. Keep separate target adapters/rule packs for MCPs and skills, with shared result contracts.
 - Load only the trusted scanner plugin. Skill packages under review are evidence: do not install, activate, or execute them.
+- For local assessment, start the assistant in a neutral trusted workspace and pass the target as evidence; prevent automatic loading of target instructions, hooks, plugins, or MCP configuration.
 - Record ownership, hosting, and evidence availability separately. Select checks according to the evidence and applicable controls, rather than assuming external MCPs are endpoint-only.
 - Inspect supplied files and make explicitly allowed discovery connections.
-- Deliver the scanner as an agent on AgentCore Runtime, with typed submission, status, report, cancellation, and recovery operations exposed through `InvokeAgentRuntime`.
-- Agent orchestration uses approved Bedrock inference in both modes; Claude Code adds client-host inference when used. Fast/deep distinguish assessment analysis, not whether the overall agent workflow uses inference.
+- Deliver a local scanner plugin/engine integration and a hosted AgentCore agent, with typed submission, status, report, cancellation, and recovery operations for the remote API.
+- Local-assistant and hosted-agent orchestration use approved Bedrock inference in both modes. A remote client assistant adds its own host inference when used. Fast/deep distinguish assessment analysis, independently of local/hosted execution.
 - Fast mode runs deterministic assessment scripts and returns their findings; the assessment engine makes no model calls for detection or remediation.
 - Deep mode runs the same deterministic checks, then makes an additional call through an approved AWS Bedrock inference profile for contextual remediation suggestions.
 - Use the corporate control catalogue as the primary policy reference, with reviewed mappings to applicable MCP, agentic, and software-security categories.
@@ -32,9 +33,9 @@ Read [the detailed assessment design](docs/assessment-design.md) for control cov
 
 MCP communication itself does not require model inference: a scripted client can perform discovery. Client-host inference, hosted-agent orchestration, assessment-engine analysis, and any inference inside the target MCP are separate boundaries. Fast mode makes no claim about a target server's internal implementation. See [inference boundaries in the design](docs/assessment-design.md#inference-boundaries).
 
-Batch size does not determine runtime count. Start with one bounded assessment batch per Runtime session and configurable internal concurrency. Persist assessment state and reports outside session memory. See [the API and lifecycle design](docs/assessment-design.md#agentcore-runtime-api-and-client-interfaces).
+Batch size does not determine runtime count. Hosted execution starts with one bounded assessment batch per Runtime session and durable S3/DynamoDB records. Local execution uses the same bounded engine with approved local run records, evidence and reports; it requires neither AgentCore nor S3/DynamoDB and does not upload artifacts automatically. Local execution is not necessarily offline: approved host inference, deep remediation, repository retrieval and target discovery may use the network. See [local direct execution](docs/assessment-design.md#local-direct-execution) and [the hosted API](docs/assessment-design.md#agentcore-runtime-api-and-client-interfaces).
 
-The existing corporate marketplace is the proposed distribution source for the trusted scanner plugin and separate Claude Code client plugin. The v1 deployment proposal includes a reviewed, pinned scanner-plugin release in the Security Agent container image, with explicit skill loading and separate evidence paths. See [marketplace and deployment packaging in the HLD](docs/high-level-design.md#10-deployment-and-operations).
+The existing corporate marketplace will distribute the canonical scanner plugin to approved local assistants and the hosted image build. The optional remote client has a separate plugin. Pin compatible plugin, engine and rule releases in both paths, with explicit skill loading and separate evidence paths. Local filesystem, credentials and sandbox controls differ from AgentCore isolation and must be configured explicitly. See [marketplace and deployment packaging in the HLD](docs/high-level-design.md#10-deployment-and-operations).
 
 Repository assessments identify the inspected commit or snapshot. When a running endpoint is also assessed, record whether that source corresponds to its deployed version; available source alone does not verify the live deployment. See [evidence availability](docs/assessment-design.md#evidence-availability-and-deployment).
 
@@ -44,10 +45,10 @@ Repository assessments identify the inspected commit or snapshot. When a running
 2. Review a representative sample of corporate controls and define applicability and evidence requirements.
 3. Implement the shared deterministic engine, separate MCP/skill rule packs, and bounded collectors.
 4. Add rule fixtures and report generation.
-5. Add the two scanner skills in one trusted plugin, the assessment agent, registered tools, and restricted Bedrock remediation adapter.
+5. Add the two scanner skills, shared engine CLI/tool adapters, compatible pinned local package and hosted image, and restricted Bedrock remediation adapter.
 6. Deploy the agent on AgentCore Runtime with authenticated invocation, durable status, report access, cancellation, and interruption recovery.
-7. Deliver the Claude Code terminal skill and client helper against that API.
-8. Verify equivalent deterministic results across clients for the same evidence snapshots and rule versions, including agent scope enforcement and session interruption tests.
+7. Support the canonical scanner plugin directly in approved local assistants; optionally deliver the separate remote client plugin against the API.
+8. Verify equivalent deterministic results across local and hosted execution for the same captured evidence, engine/plugin/rule/configuration versions and assessment context. Report environment-dependent coverage differences and test scope enforcement and interruption in each path.
 
 ## Local data
 

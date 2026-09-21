@@ -1,22 +1,16 @@
 flowchart TB
-    App["Security Agent source<br/>Engine, agent and invocation API"]
-    Scanner["Corporate marketplace<br/>Selected security-assessment plugin<br/>Pinned and verified release"]
-    Rules["Approved rule pack<br/>Corporate mappings and references"]
+    App["Security Agent source<br/>Shared engine, agent and API"]
+    Scanner["Canonical marketplace plugin<br/>mcp-assessment + skill-assessment<br/>Pinned reviewed version"]
+    Rules["Approved rules and mappings<br/>Pinned policy and reference versions"]
 
     App --> CI
     Scanner --> CI
     Rules --> CI
-    CI["CI verification and composition<br/>Verify inputs and test compatibility<br/>Exclude client helper and auto-start hooks"]
-    CI --> Image["Immutable release image in ECR<br/>Application, scanner plugin and approved rules"]
-    Image --> Release["Release record<br/>Image digest and engine, plugin, rule versions<br/>Compatibility verified before promotion"]
+    CI["CI verification and compatibility tests<br/>Bind engine, plugin and rule versions<br/>Record each release artifact identity"]
 
-    subgraph Runtime["AgentCore Runtime"]
-        Service["Security Agent<br/>Authenticated invocation handler and engine"]
-        Loader["Explicit trusted skill loader<br/>mcp-assessment and skill-assessment"]
-        Service --> Loader
-    end
-    Release -->|Deploy pinned image| Service
+    CI --> Image["Hosted release<br/>Immutable ECR image<br/>Engine, scanner plugin and rules"]
+    Image --> Hosted["Hosted execution<br/>AgentCore Runtime with API<br/>Explicit trusted skill loading"]
 
-    Client["Marketplace client plugin<br/>Separate distribution"]
-    Client --> Claude["Claude Code<br/>Terminal invocation skill"]
-    Claude -->|Call hosted API| Service
+    CI --> Package["Local release<br/>Versioned engine package and CLI<br/>Same scanner plugin and rules"]
+    Package --> Local["Independent local execution<br/>Coding assistant installs scanner plugin<br/>Invokes the local engine CLI"]
+    Local --> Report["Local report<br/>No AgentCore invocation required"]
