@@ -18,6 +18,10 @@ Read the [Security Agent high-level design](docs/high-level-design.md) for archi
 
 Read [the detailed assessment design](docs/assessment-design.md) for control coverage, rule contracts, evidence requirements, and implementation considerations.
 
+The [four assessment entry points](docs/high-level-design.md#four-assessment-entry-points) cover skill repositories, MCP source repositories, MCP endpoints and installed CLI skills/MCPs. Repository, endpoint and local-installation collectors feed the same two scanners. Installed evidence can be assessed locally or explicitly exported for hosted assessment.
+
+For repository scans from GitHub Actions, the proposed [remediation workflow](docs/high-level-design.md#github-actions-assessment-and-optional-remediation-pr) adds a `workflow_dispatch` boolean, `create_remediation_pr`, defaulting to `false`. Enabling it requires deep mode: the API returns findings plus a proposed patch, and trusted GHA jobs validate the changes and open a draft PR. Original findings remain intact and no automatic merge occurs. This workflow is designed but not implemented.
+
 ## Confirmed scope
 
 - Assess both internal and external MCPs using available repository source code, configuration, deployment artifacts, and/or endpoint evidence.
@@ -26,6 +30,7 @@ Read [the detailed assessment design](docs/assessment-design.md) for control cov
 - For local assessment, start the assistant in a neutral trusted workspace and pass the target as evidence; prevent automatic loading of target instructions, hooks, plugins, or MCP configuration.
 - Record ownership, hosting, and evidence availability separately. Select checks according to the evidence and applicable controls, rather than assuming external MCPs are endpoint-only.
 - Inspect supplied files and make explicitly allowed discovery connections.
+- Inspect selected installed CLI packages/configuration through a local read-only collector; do not launch configured stdio servers or implicitly upload workstation evidence.
 - Deliver a local scanner plugin/engine integration and a hosted AgentCore agent, with typed submission, status, report, cancellation, and recovery operations for the remote API.
 - Local-assistant and hosted-agent orchestration use approved Bedrock inference in both modes. A remote client assistant adds its own host inference when used. Fast/deep distinguish assessment analysis, independently of local/hosted execution.
 - Fast mode runs deterministic assessment scripts and returns their findings; the assessment engine makes no model calls for detection or remediation.
@@ -37,7 +42,7 @@ MCP communication itself does not require model inference: a scripted client can
 
 Batch size does not determine runtime count. Hosted execution starts with one bounded assessment batch per Runtime session, with state in Amazon Aurora PostgreSQL accessed through the RDS Data API over HTTPS, and artifacts in private S3. Local execution uses the same bounded engine with approved local run records, evidence and reports; it does not require AgentCore, Aurora, the RDS Data API or S3 and does not upload artifacts automatically. Local execution is not necessarily offline: approved host inference, deep remediation, repository retrieval and target discovery may use the network. See [local direct execution](docs/assessment-design.md#local-direct-execution) and [the hosted API](docs/assessment-design.md#agentcore-runtime-api-and-client-interfaces).
 
-The existing corporate marketplace will distribute the canonical scanner plugin to approved local assistants and the hosted image build. The optional remote client has a separate plugin. Pin compatible plugin, engine and rule releases in both paths, with explicit skill loading and separate evidence paths. Local filesystem, credentials and sandbox controls differ from AgentCore isolation and must be configured explicitly. See [marketplace and deployment packaging in the HLD](docs/high-level-design.md#10-deployment-and-operations).
+The agent/engine and scanner plugin have separate source repositories. The existing corporate marketplace will distribute approved releases from the scanner-plugin repository to local assistants and the hosted image build. The optional remote client has a separate plugin package. Pin compatible plugin, engine and rule releases in both paths, with explicit skill loading and separate evidence paths. Local filesystem, credentials and sandbox controls differ from AgentCore isolation and must be configured explicitly. See [marketplace and deployment packaging in the HLD](docs/high-level-design.md#10-deployment-and-operations).
 
 Repository assessments identify the inspected commit or snapshot. When a running endpoint is also assessed, record whether that source corresponds to its deployed version; available source alone does not verify the live deployment. See [evidence availability](docs/assessment-design.md#evidence-availability-and-deployment).
 
@@ -51,6 +56,7 @@ Repository assessments identify the inspected commit or snapshot. When a running
 6. Deploy the agent on AgentCore Runtime with authenticated invocation, durable status, report access, cancellation, and interruption recovery.
 7. Support the canonical scanner plugin directly in approved local assistants; optionally deliver the separate remote client plugin against the API.
 8. Verify equivalent deterministic results across local and hosted execution for the same captured evidence, engine/plugin/rule/configuration versions and assessment context. Report environment-dependent coverage differences and test scope enforcement and interruption in each path.
+9. Add the optional GHA remediation-PR workflow with commit-bound patches, isolated static validation, scoped publishing permissions and explicit delivery outcomes.
 
 ## Local data
 

@@ -1,0 +1,32 @@
+sequenceDiagram
+    autonumber
+    participant Scan as GHA assessment job
+    participant Agent as Security Agent API
+    participant Check as GHA validation job
+    participant Write as GHA publishing job
+    participant Git as GitHub repository
+    Note over Scan,Agent: Dispatch inputs: mode, target types and base branch<br/>create_remediation_pr defaults to false
+    Scan->>Agent: Submit exact source snapshot and requested mode/options
+    Agent-->>Scan: Accepted assessment ID
+    Agent->>Agent: Publish baseline, then deep advice<br/>and requested patch
+    Scan->>Agent: Poll status and retrieve report
+    Agent-->>Scan: Findings, coverage and optional patch status/reference
+    alt PR requested, deep mode and eligible source edits
+        Scan->>Check: Immutable patch digest, base SHA and findings
+        Check->>Check: Verify paths/hashes and apply edits<br/>Run bounded static checks
+        alt Validation passes and publication authorised
+            Check->>Write: Validated candidate identity
+            Write->>Git: Recheck base SHA and bot branch/PR state
+            alt Base unchanged and no human-edit conflict
+                Write->>Git: Push bot branch and create or reconcile draft PR
+                Git-->>Write: PR URL
+            else Stale base or conflicting state
+                Write->>Write: Stop delivery with explicit reason
+            end
+        else Invalid edits or incomplete required coverage
+            Check->>Check: Block PR publication
+        end
+    else Report-only, no changes or manual remediation
+        Scan->>Scan: Record no-PR reason
+    end
+    Note over Scan,Git: Workflow summary preserves assessment/report and delivery outcome, no automatic merge

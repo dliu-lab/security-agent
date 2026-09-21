@@ -15,7 +15,8 @@ sequenceDiagram
     Agent->>Model: Scoped orchestration using trusted skill
     Agent->>Engine: Execute required assessment workflow
     Engine->>S3: Store evidence, findings, coverage, baseline report
-    Engine->>DB: Commit progress and renew lease with attempt/version guards
+    Engine->>DB: Publish baseline references, findings and coverage under lease guards
+    Note over API,DB: Baseline is retrievable before deep analysis finishes
     opt Deep mode
         Agent->>Model: Minimized findings and control excerpts (no tools)
         Agent->>Agent: Validate advisory schema and evidence references

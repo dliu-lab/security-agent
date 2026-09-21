@@ -1,11 +1,12 @@
 flowchart TB
+    Targets["Untrusted target evidence<br/>Approved repositories, uploaded snapshots<br/>and permitted MCP endpoints"]
     Client["Claude Code client skill / application / CI"]
     API["AgentCore invocation API<br/>Configured authentication"]
     Client --> API
 
     subgraph Runtime["AgentCore Runtime: one assessment attempt per session"]
         Entry["Operation handler<br/>Identity, ownership, scope, admission"]
-        Agent["Security Agent<br/>Bounded orchestration"]
+        Agent["Security Agent and controller<br/>Bounded orchestration"]
         subgraph Plugin["Trusted security-assessment plugin"]
             MCP["mcp-assessment skill"]
             Skill["skill-assessment skill"]
@@ -17,11 +18,10 @@ flowchart TB
         Agent --> Skill
         MCP --> Engine
         Skill --> Engine
-        Engine -->|deep only| Advice
+        Agent -->|deep only| Advice
     end
 
     API --> Entry
-    Targets["Untrusted target evidence<br/>Approved repositories and MCP endpoints"]
     subgraph Services["Approved AWS services"]
         Registry[("Aurora PostgreSQL<br/>Via RDS Data API over HTTPS<br/>State, findings, attempts, leases")]
         Artifacts[("Private S3 + KMS<br/>Evidence, checkpoints, reports")]
@@ -31,6 +31,6 @@ flowchart TB
     Engine --> Registry
     Engine --> Artifacts
     Advice --> Artifacts
-    Engine -->|bounded permitted access| Targets
+    Targets -->|bounded evidence collection| Engine
     Agent -->|orchestration| Model
     Advice -->|remediation| Model

@@ -1,16 +1,15 @@
 flowchart TB
-    App["Security Agent source<br/>Shared engine, agent and API"]
-    Scanner["Canonical marketplace plugin<br/>mcp-assessment + skill-assessment<br/>Pinned reviewed version"]
-    Rules["Approved rules and mappings<br/>Pinned policy and reference versions"]
-
+    App["Security Agent application repository<br/>Agent, API, CLI, engine and rules"]
+    Plugin["Separate scanner-plugin repository<br/>mcp-assessment + skill-assessment"]
+    Controls["Approved private configuration<br/>Versioned catalogue and mappings"]
+    Plugin --> Marketplace["Corporate marketplace<br/>Distributes approved immutable plugin releases"]
     App --> CI
-    Scanner --> CI
-    Rules --> CI
-    CI["CI verification and compatibility tests<br/>Bind engine, plugin and rule versions<br/>Record each release artifact identity"]
-
-    CI --> Image["Hosted release<br/>Immutable ECR image<br/>Engine, scanner plugin and rules"]
+    Marketplace -->|selected pinned plugin| CI
+    Controls -->|approved version references| CI
+    CI["Application release CI<br/>Pin separate agent and plugin revisions<br/>Test compatibility and record artifact digests"]
+    CI --> Image["Hosted release<br/>Immutable ECR image<br/>Agent, engine, scanner plugin and rules"]
     Image --> Hosted["Hosted execution<br/>AgentCore Runtime with API<br/>Explicit trusted skill loading"]
-
-    CI --> Package["Local release<br/>Versioned engine package and CLI<br/>Same scanner plugin and rules"]
-    Package --> Local["Independent local execution<br/>Coding assistant installs scanner plugin<br/>Invokes the local engine CLI"]
+    CI --> Package["Local engine release<br/>Versioned engine package and CLI<br/>Compatible reviewed rules"]
+    Package --> Local["Independent local execution<br/>Assistant loads pinned scanner plugin<br/>Invokes compatible local engine CLI"]
+    Marketplace -->|same approved plugin| Local
     Local --> Report["Local report<br/>No AgentCore invocation required"]
